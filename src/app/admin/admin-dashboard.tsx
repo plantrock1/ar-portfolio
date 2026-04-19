@@ -35,6 +35,7 @@ type RefreshRun = {
 export function AdminDashboard({
   initialArtists,
   initialBio,
+  initialSocials,
   initialShowListenerChart,
   initialPress,
   lastRefreshedAt,
@@ -42,6 +43,7 @@ export function AdminDashboard({
 }: {
   initialArtists: Artist[];
   initialBio: string;
+  initialSocials: ArtistSocials;
   initialShowListenerChart: boolean;
   initialPress: FeaturedItem[];
   lastRefreshedAt: string | null;
@@ -58,6 +60,10 @@ export function AdminDashboard({
   const [role, setRole] = useState("");
   const [bio, setBio] = useState(initialBio);
   const [savedBio, setSavedBio] = useState(initialBio);
+  const [socials, setSocials] = useState<ArtistSocials>(initialSocials ?? {});
+  const [savedSocials, setSavedSocials] = useState<ArtistSocials>(
+    initialSocials ?? {},
+  );
   const [showChart, setShowChart] = useState(initialShowListenerChart);
   const [press, setPress] = useState(initialPress);
   const [spDc, setSpDc] = useState("");
@@ -273,7 +279,7 @@ export function AdminDashboard({
     const res = await fetch("/api/admin/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bio }),
+      body: JSON.stringify({ bio, socials }),
     });
     if (!res.ok) {
       const data = await parseResponse(res);
@@ -281,6 +287,7 @@ export function AdminDashboard({
       return;
     }
     setSavedBio(bio);
+    setSavedSocials(socials);
     setMessage("Bio saved.");
     startSavingBio(() => router.refresh());
   }
@@ -386,7 +393,7 @@ export function AdminDashboard({
 
       <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
         <div className="flex items-baseline justify-between mb-4">
-          <h2 className="display text-xl text-white">Bio</h2>
+          <h2 className="display text-xl text-white">Bio & socials</h2>
           <span className="text-xs text-white/40">
             Appears under your name on the home page
           </span>
@@ -398,6 +405,36 @@ export function AdminDashboard({
           placeholder="A&R working with artists across…"
           className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 resize-y"
         />
+        <div className="mt-4">
+          <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
+            Your social links (appear as icons next to your bio)
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                ["instagram", "Instagram URL"],
+                ["tiktok", "TikTok URL"],
+                ["twitter", "Twitter / X URL"],
+                ["youtube", "YouTube URL"],
+                ["soundcloud", "SoundCloud URL"],
+                ["website", "Website"],
+              ] as const
+            ).map(([key, label]) => (
+              <input
+                key={key}
+                value={(socials[key] as string) ?? ""}
+                onChange={(e) => setSocials({ ...socials, [key]: e.target.value })}
+                placeholder={label}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+              />
+            ))}
+          </div>
+        </div>
+        {(() => {
+          const dirty =
+            bio !== savedBio ||
+            JSON.stringify(socials) !== JSON.stringify(savedSocials);
+          return (
         <div className="mt-3 flex items-center justify-between gap-3">
           <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer select-none">
             <input
@@ -414,13 +451,15 @@ export function AdminDashboard({
             </span>
             <button
               onClick={saveBio}
-              disabled={isSavingBio || bio === savedBio}
+              disabled={isSavingBio || !dirty}
               className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
             >
-              {isSavingBio ? "Saving…" : bio === savedBio ? "Saved" : "Save bio"}
+              {isSavingBio ? "Saving…" : !dirty ? "Saved" : "Save"}
             </button>
           </div>
         </div>
+          );
+        })()}
       </section>
 
       <FeaturedSection

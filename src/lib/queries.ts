@@ -260,15 +260,18 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
 
 export async function getSiteSettings(): Promise<{
   bio: string;
+  socials: import("@/lib/db/schema").ArtistSocials;
   showListenerChart: boolean;
 }> {
   const rows = await db
     .select()
     .from(schema.siteSettings)
     .where(eq(schema.siteSettings.id, "main"));
-  if (rows.length === 0) return { bio: "", showListenerChart: false };
+  if (rows.length === 0)
+    return { bio: "", socials: {}, showListenerChart: false };
   return {
     bio: rows[0].bio,
+    socials: rows[0].socials ?? {},
     showListenerChart: rows[0].showListenerChart,
   };
 }

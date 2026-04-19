@@ -127,6 +127,7 @@ export const refreshRuns = pgTable("refresh_runs", {
 export const siteSettings = pgTable("site_settings", {
   id: text("id").primaryKey(),
   bio: text("bio").notNull().default(""),
+  socials: jsonb("socials").$type<ArtistSocials>().notNull().default({}),
   showListenerChart: boolean("show_listener_chart").notNull().default(false),
   spotifySpDc: text("spotify_sp_dc"),
   spotifySessionStatus: text("spotify_session_status").notNull().default("unknown"),

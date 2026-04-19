@@ -9,6 +9,7 @@ import { ArtistCard } from "@/components/artist-card";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { Stat } from "@/components/stat";
 import { TopTrackRow } from "@/components/top-track-row";
+import { SocialIcons } from "@/components/social-icons";
 import { formatFullNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,9 @@ export default async function Home() {
                   {settings.bio}
                 </p>
               ) : null}
+              <div className="mt-5">
+                <SocialIcons socials={settings.socials} />
+              </div>
             </div>
             <div className="flex flex-col gap-6 mt-10 md:mt-0 md:min-w-[220px]">
               <Stat label="Total artists" value={totals.artistCount} />
