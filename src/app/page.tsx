@@ -55,7 +55,7 @@ export default async function Home() {
               }
             />
             <Stat
-              label="Combined streams (across top 5 tracks)"
+              label="Combined streams"
               value={totals.totalStreams}
               sub={
                 totals.totalStreams !== null

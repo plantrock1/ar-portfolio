@@ -9,10 +9,17 @@ export function AdminDashboard({
   initialArtists,
   initialBio,
   lastRefreshedAt,
+  session,
 }: {
   initialArtists: Artist[];
   initialBio: string;
   lastRefreshedAt: string | null;
+  session: {
+    hasCookie: boolean;
+    status: "ok" | "expired" | "unknown";
+    updatedAt: string | null;
+    preview: string | null;
+  };
 }) {
   const router = useRouter();
   const [artists, setArtists] = useState(initialArtists);
@@ -20,11 +27,15 @@ export function AdminDashboard({
   const [role, setRole] = useState("");
   const [bio, setBio] = useState(initialBio);
   const [savedBio, setSavedBio] = useState(initialBio);
+  const [spDc, setSpDc] = useState("");
+  const [sessionState, setSessionState] = useState(session);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isAdding, startAdding] = useTransition();
   const [isRefreshing, startRefresh] = useTransition();
+  const [isDeepRefreshing, startDeepRefresh] = useTransition();
   const [isSavingBio, startSavingBio] = useTransition();
+  const [isSavingSession, startSavingSession] = useTransition();
 
   async function parseResponse(res: Response) {
     const text = await res.text();
@@ -91,6 +102,60 @@ export function AdminDashboard({
       } monthly listener scrapes succeeded · ${Math.round(data.durationMs / 1000)}s`,
     );
     startRefresh(() => router.refresh());
+  }
+
+  async function deepRefresh() {
+    setError(null);
+    setMessage("Deep refresh running… scraping every album, this may take several minutes.");
+    const res = await fetch("/api/cron/deep-refresh");
+    const data = await parseResponse(res);
+    if (!res.ok) {
+      setError(data.error ?? "Deep refresh failed");
+      setMessage(null);
+      return;
+    }
+    setMessage(
+      `Deep refresh complete · ${data.artistsRefreshed} artists · ${data.albumsScraped} albums · ${data.tracksRefreshed} tracks · ${Math.round(data.durationMs / 1000)}s`,
+    );
+    startDeepRefresh(() => router.refresh());
+  }
+
+  async function saveSession() {
+    setError(null);
+    setMessage(null);
+    if (!spDc.trim()) return;
+    const res = await fetch("/api/admin/spotify-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ spDc: spDc.trim() }),
+    });
+    const data = await parseResponse(res);
+    if (!res.ok) {
+      setError(data.error ?? "Failed to save session");
+      return;
+    }
+    setMessage("Session cookie saved.");
+    setSpDc("");
+    const short = `${spDc.trim().slice(0, 4)}…${spDc.trim().slice(-4)}`;
+    setSessionState({
+      hasCookie: true,
+      status: "unknown",
+      updatedAt: new Date().toISOString(),
+      preview: short,
+    });
+    startSavingSession(() => router.refresh());
+  }
+
+  async function clearSession() {
+    if (!confirm("Remove stored Spotify session cookie?")) return;
+    await fetch("/api/admin/spotify-session", { method: "DELETE" });
+    setSessionState({
+      hasCookie: false,
+      status: "unknown",
+      updatedAt: null,
+      preview: null,
+    });
+    router.refresh();
   }
 
   async function logout() {
@@ -173,6 +238,65 @@ export function AdminDashboard({
       </section>
 
       <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
+        <div className="flex items-baseline justify-between mb-4">
+          <h2 className="display text-xl text-white">Spotify session</h2>
+          <SessionBadge status={sessionState.hasCookie ? sessionState.status : "absent"} />
+        </div>
+        <p className="text-xs text-white/50 leading-relaxed mb-4">
+          Pasting your <code className="text-white/80">sp_dc</code> cookie lets the scraper
+          see per-track stream counts on album pages. One-time setup; cookie lasts
+          ~12 months.
+        </p>
+        <details className="text-xs text-white/50 mb-4 rounded border border-white/10 bg-black/20">
+          <summary className="cursor-pointer px-3 py-2 hover:text-white/80">
+            How to get your sp_dc cookie →
+          </summary>
+          <ol className="list-decimal list-inside px-4 pb-3 pt-1 space-y-1 text-white/60">
+            <li>Log into <a href="https://open.spotify.com" target="_blank" rel="noreferrer" className="underline text-white/80">open.spotify.com</a> in Chrome</li>
+            <li>Open DevTools (⌥⌘I) → Application tab → Cookies → <code>https://open.spotify.com</code></li>
+            <li>Find the row named <code>sp_dc</code>, copy the Value column</li>
+            <li>Paste it below and hit Save</li>
+          </ol>
+        </details>
+        {sessionState.hasCookie ? (
+          <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3 mb-3">
+            <div className="flex flex-col">
+              <span className="text-sm text-white">
+                Cookie stored: <code className="text-white/60">{sessionState.preview}</code>
+              </span>
+              <span className="text-xs text-white/40">
+                {sessionState.updatedAt
+                  ? `Saved ${new Date(sessionState.updatedAt).toLocaleString()}`
+                  : ""}
+              </span>
+            </div>
+            <button
+              onClick={clearSession}
+              className="text-xs text-red-400/70 hover:text-red-400"
+            >
+              Remove
+            </button>
+          </div>
+        ) : null}
+        <div className="grid md:grid-cols-[1fr_auto] gap-3">
+          <input
+            type="password"
+            value={spDc}
+            onChange={(e) => setSpDc(e.target.value)}
+            placeholder={sessionState.hasCookie ? "Paste a new cookie to replace…" : "Paste sp_dc cookie value…"}
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 font-mono text-sm"
+          />
+          <button
+            onClick={saveSession}
+            disabled={isSavingSession || !spDc.trim()}
+            className="rounded-lg bg-white px-4 py-3 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
+          >
+            {isSavingSession ? "Saving…" : "Save cookie"}
+          </button>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
         <h2 className="display text-xl text-white mb-4">Add artist</h2>
         <form onSubmit={addArtist} className="grid md:grid-cols-[1fr_200px_auto] gap-3">
           <input
@@ -196,18 +320,37 @@ export function AdminDashboard({
             {isAdding ? "Adding…" : "Add"}
           </button>
         </form>
-        <div className="mt-4 flex items-center justify-between text-sm">
-          <div className="text-white/50">
+        <div className="mt-4 flex items-center justify-between gap-3 text-sm">
+          <div className="text-white/50 min-w-0 flex-1">
             {message ? <span className="text-green-400">{message}</span> : null}
             {error ? <span className="text-red-400">{error}</span> : null}
           </div>
-          <button
-            onClick={refreshNow}
-            disabled={isRefreshing}
-            className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
-          >
-            {isRefreshing ? "Refreshing…" : "Refresh now"}
-          </button>
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={refreshNow}
+              disabled={isRefreshing || isDeepRefreshing}
+              className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
+              title="Re-scrapes artist pages only — monthly listeners + top tracks. ~20s."
+            >
+              {isRefreshing ? "Refreshing…" : "Refresh"}
+            </button>
+            <button
+              onClick={deepRefresh}
+              disabled={
+                isRefreshing ||
+                isDeepRefreshing ||
+                !sessionState.hasCookie
+              }
+              className="rounded-lg bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
+              title={
+                sessionState.hasCookie
+                  ? "Visits every album page for every artist — full stream counts. Several minutes."
+                  : "Requires sp_dc session cookie (see above)"
+              }
+            >
+              {isDeepRefreshing ? "Deep refresh…" : "Deep refresh"}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -262,5 +405,26 @@ export function AdminDashboard({
         )}
       </section>
     </main>
+  );
+}
+
+function SessionBadge({
+  status,
+}: {
+  status: "ok" | "expired" | "unknown" | "absent";
+}) {
+  const map = {
+    ok: { label: "Active", className: "text-green-400 bg-green-500/10 border-green-500/20" },
+    unknown: { label: "Not verified", className: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20" },
+    expired: { label: "Expired", className: "text-red-400 bg-red-500/10 border-red-500/20" },
+    absent: { label: "Not set", className: "text-white/40 bg-white/5 border-white/10" },
+  } as const;
+  const { label, className } = map[status];
+  return (
+    <span
+      className={`text-[10px] uppercase tracking-widest rounded-full border px-2 py-1 ${className}`}
+    >
+      {label}
+    </span>
   );
 }

@@ -94,6 +94,11 @@ export const trackSnapshots = pgTable(
 export const siteSettings = pgTable("site_settings", {
   id: text("id").primaryKey(),
   bio: text("bio").notNull().default(""),
+  spotifySpDc: text("spotify_sp_dc"),
+  spotifySessionStatus: text("spotify_session_status").notNull().default("unknown"),
+  spotifySessionUpdatedAt: timestamp("spotify_session_updated_at", {
+    withTimezone: true,
+  }),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
