@@ -1,5 +1,3 @@
-import Image from "next/image";
-import Link from "next/link";
 import {
   getRoster,
   getAggregate,
@@ -10,7 +8,8 @@ import {
 import { ArtistCard } from "@/components/artist-card";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { Stat } from "@/components/stat";
-import { formatFullNumber, formatNumber } from "@/lib/utils";
+import { TopTrackRow } from "@/components/top-track-row";
+import { formatFullNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -117,45 +116,16 @@ export default async function Home() {
               </div>
               <ol className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
                 {topTracks.map((t, i) => (
-                  <a
+                  <TopTrackRow
                     key={t.spotifyId}
-                    href={`https://open.spotify.com/track/${t.spotifyId}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-4 px-4 py-4 hover:bg-white/[0.04] transition-colors"
-                  >
-                    <span className="display w-8 text-center text-2xl text-white/30 tabular-nums">
-                      {i + 1}
-                    </span>
-                    {t.albumImageUrl ? (
-                      <Image
-                        src={t.albumImageUrl}
-                        alt={t.name}
-                        width={48}
-                        height={48}
-                        className="rounded"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded bg-neutral-800" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white truncate">{t.name}</div>
-                      <Link
-                        href={`/artist/${t.artistSlug}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-xs text-white/50 hover:text-white transition-colors truncate block"
-                      >
-                        {t.artistName}
-                      </Link>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm tabular-nums">
-                      <span className="text-white/90">
-                        {formatNumber(t.streams)}
-                      </span>
-                      <span className="text-white/30 text-xs">plays</span>
-                    </div>
-                    <span className="text-xs text-white/30 pl-2">↗</span>
-                  </a>
+                    index={i}
+                    spotifyId={t.spotifyId}
+                    name={t.name}
+                    albumImageUrl={t.albumImageUrl}
+                    streams={t.streams}
+                    artistName={t.artistName}
+                    artistSlug={t.artistSlug}
+                  />
                 ))}
               </ol>
             </section>
