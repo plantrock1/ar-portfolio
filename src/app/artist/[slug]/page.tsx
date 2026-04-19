@@ -1,0 +1,225 @@
+import Image from "next/image";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import {
+  getArtistBySlug,
+  getArtistHistory,
+  getArtistTracks,
+} from "@/lib/queries";
+import { SiteHeader, SiteFooter } from "@/components/site-header";
+import { Stat } from "@/components/stat";
+import { GrowthChart } from "@/components/growth-chart";
+import { formatNumber } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
+
+function toDayLabel(d: Date) {
+  return new Date(d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatDuration(ms: number | null) {
+  if (!ms) return "—";
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+export default async function ArtistPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const artist = await getArtistBySlug(slug);
+  if (!artist) notFound();
+
+  const [history, tracks] = await Promise.all([
+    getArtistHistory(artist.id),
+    getArtistTracks(artist.id),
+  ]);
+
+  const latest = history[history.length - 1] ?? null;
+
+  const monthlyListenersSeries = history.map((h) => ({
+    day: toDayLabel(h.capturedAt),
+    value: h.monthlyListeners !== null ? Number(h.monthlyListeners) : null,
+  }));
+  const followersSeries = history.map((h) => ({
+    day: toDayLabel(h.capturedAt),
+    value: Number(h.followers),
+  }));
+
+  return (
+    <>
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-6xl px-6 pb-24">
+        <div className="pt-10 pb-6">
+          <Link
+            href="/"
+            className="text-sm text-white/50 hover:text-white transition-colors"
+          >
+            ← All artists
+          </Link>
+        </div>
+
+        <section className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-10 items-end pb-12">
+          <div className="relative aspect-square w-full max-w-[280px] overflow-hidden rounded-xl border border-white/10">
+            {artist.imageUrl ? (
+              <Image
+                src={artist.imageUrl}
+                alt={artist.name}
+                fill
+                sizes="280px"
+                className="object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-neutral-900" />
+            )}
+          </div>
+          <div className="flex flex-col gap-4">
+            {artist.role ? (
+              <div className="text-xs uppercase tracking-[0.2em] text-white/40">
+                {artist.role}
+              </div>
+            ) : null}
+            <h1 className="display text-5xl md:text-7xl leading-none text-white">
+              {artist.name}
+            </h1>
+            <div className="flex flex-wrap gap-2 pt-2">
+              {artist.genres.map((g) => (
+                <span
+                  key={g}
+                  className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/60"
+                >
+                  {g}
+                </span>
+              ))}
+            </div>
+            <a
+              href={`https://open.spotify.com/artist/${artist.spotifyId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-2 self-start rounded-full bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] transition-colors"
+            >
+              Open on Spotify ↗
+            </a>
+          </div>
+        </section>
+
+        <div className="divider" />
+
+        <section className="py-12">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-10">
+            <Stat
+              label="Monthly Listeners"
+              value={latest?.monthlyListeners ? Number(latest.monthlyListeners) : null}
+            />
+            <Stat
+              label="Followers"
+              value={latest ? Number(latest.followers) : null}
+            />
+            <Stat
+              label="Popularity"
+              value={latest?.popularity ?? null}
+              sub="Spotify score (0–100)"
+            />
+          </div>
+        </section>
+
+        <div className="divider" />
+
+        <section className="py-12 grid gap-12 md:grid-cols-2">
+          <div>
+            <h3 className="display text-2xl text-white mb-5">
+              Monthly listeners over time
+            </h3>
+            <GrowthChart
+              label="Monthly"
+              data={monthlyListenersSeries}
+              color="#1db954"
+            />
+          </div>
+          <div>
+            <h3 className="display text-2xl text-white mb-5">Followers</h3>
+            <GrowthChart
+              label="Followers"
+              data={followersSeries}
+              color="#60a5fa"
+            />
+          </div>
+        </section>
+
+        <div className="divider" />
+
+        <section className="pt-12">
+          <h3 className="display text-2xl text-white mb-6">Top tracks</h3>
+          {tracks.length === 0 ? (
+            <div className="text-sm text-white/40">
+              No tracks loaded yet — they'll appear after the next refresh.
+            </div>
+          ) : (
+            <div className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
+              {tracks.map((t, i) => (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-4 px-4 py-3 hover:bg-white/[0.02]"
+                >
+                  <span className="w-6 text-center text-sm text-white/30 tabular-nums">
+                    {i + 1}
+                  </span>
+                  {t.albumImageUrl ? (
+                    <Image
+                      src={t.albumImageUrl}
+                      alt={t.albumName ?? ""}
+                      width={40}
+                      height={40}
+                      className="rounded"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded bg-neutral-800" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-white truncate">{t.name}</div>
+                    <div className="text-xs text-white/40 truncate">
+                      {t.albumName}
+                      {t.releaseDate ? ` · ${t.releaseDate.slice(0, 4)}` : ""}
+                    </div>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-2 text-xs text-white/50 min-w-24 justify-end">
+                    <span>Pop.</span>
+                    <span className="text-white/80 tabular-nums">
+                      {t.popularity ?? "—"}
+                    </span>
+                  </div>
+                  <div className="hidden md:block text-xs text-white/40 tabular-nums w-12 text-right">
+                    {formatDuration(t.durationMs)}
+                  </div>
+                  <a
+                    href={`https://open.spotify.com/track/${t.spotifyId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-white/40 hover:text-white"
+                  >
+                    ↗
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {latest ? (
+          <div className="pt-8 text-xs text-white/30">
+            Last updated {new Date(latest.capturedAt).toLocaleString()} ·{" "}
+            {formatNumber(latest.followers ? Number(latest.followers) : 0)} followers
+          </div>
+        ) : null}
+      </main>
+      <SiteFooter />
+    </>
+  );
+}
