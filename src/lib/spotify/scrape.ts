@@ -372,12 +372,14 @@ async function scrapeArtistPage(
       albumIds: data.albumIds,
     };
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`[scrape] artist page failed for ${spotifyId}: ${msg}`);
     return {
       spotifyId,
       monthlyListeners: null,
       tracks: [],
       albumIds: [],
-      error: e instanceof Error ? e.message : String(e),
+      error: msg,
     };
   }
 }

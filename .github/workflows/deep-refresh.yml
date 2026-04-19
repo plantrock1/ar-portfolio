@@ -32,6 +32,18 @@ jobs:
           sudo apt-get install -y /tmp/chrome.deb
           google-chrome --version
 
+      - name: Diagnostic — check Spotify reachability from runner
+        run: |
+          echo "--- public IP of runner:"
+          curl -s https://ifconfig.me && echo
+          echo "--- HEAD open.spotify.com:"
+          curl -sI -A "Mozilla/5.0" https://open.spotify.com/ | head -10
+          echo "--- HEAD artist page:"
+          curl -sI -A "Mozilla/5.0" https://open.spotify.com/artist/2U3bFzN7xGOhqdATusepqC | head -10
+          echo "--- GET artist page (first 800 bytes):"
+          curl -s -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36" https://open.spotify.com/artist/2U3bFzN7xGOhqdATusepqC | head -c 800 | tr -d '\n' | cut -c 1-800
+          echo
+
       - name: Install npm dependencies
         run: npm ci
 
