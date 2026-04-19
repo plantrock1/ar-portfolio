@@ -40,7 +40,7 @@ export function RosterGrid({
         <h2 className="display text-3xl md:text-4xl text-white">Roster</h2>
         <div className="flex items-center gap-3 flex-wrap">
           {/* Sort pill */}
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest rounded-full border border-white/10 p-1">
+          <div className="flex items-center gap-1 text-xs tracking-wide rounded-full border border-white/10 p-1">
             <Link
               href="/"
               scroll={false}
@@ -50,7 +50,7 @@ export function RosterGrid({
                   : "text-white/40 hover:text-white/70"
               }`}
             >
-              Monthly listeners
+              Monthly Listeners
             </Link>
             <Link
               href="/?sort=alpha"
