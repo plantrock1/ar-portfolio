@@ -209,6 +209,9 @@ export type TopTrack = {
 };
 
 export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
+  // Note: the top-tracks LIST dedupes by spotify_id so a collab shows once
+  // (we don't want the same track appearing twice in a top-5 list). This is
+  // intentionally different from the aggregate total, which sums per-artist.
   const result = await db.execute<{
     spotify_id: string;
     name: string;
