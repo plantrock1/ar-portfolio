@@ -72,11 +72,6 @@ export default async function Home({
     featured_media:
       press.length > 0 ? (
         <section className="pt-14 md:pt-20">
-          <div className="flex items-baseline justify-between mb-10">
-            <h2 className="display text-3xl md:text-4xl text-white">
-              Featured media
-            </h2>
-          </div>
           <FeaturedGrid items={press} />
         </section>
       ) : null,

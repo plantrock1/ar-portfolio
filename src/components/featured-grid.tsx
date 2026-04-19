@@ -32,7 +32,10 @@ export function FeaturedGrid({ items }: { items: Item[] }) {
 
   return (
     <>
-      <div className="flex items-center justify-end mb-4">
+      <div className="flex items-baseline justify-between mb-10 gap-4 flex-wrap">
+        <h2 className="display text-3xl md:text-4xl text-white">
+          Featured media
+        </h2>
         <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest rounded-full border border-white/10 p-1">
           <button
             type="button"
