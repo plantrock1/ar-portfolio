@@ -61,6 +61,16 @@ export async function launchBrowser(): Promise<Browser> {
 
 async function applyStealth(page: Page) {
   await page.evaluateOnNewDocument(() => {
+    // esbuild (used by tsx) wraps transformed function expressions with a
+    // `__name()` helper for preserving function names in stack traces. When
+    // those wrapped functions are serialized into page.evaluate(), they run
+    // in the browser context which doesn't define __name. Shim it here so
+    // every evaluated function can call through.
+    // @ts-expect-error shim on window
+    if (typeof globalThis.__name === "undefined") {
+      // @ts-expect-error shim on window
+      globalThis.__name = (fn) => fn;
+    }
     Object.defineProperty(navigator, "webdriver", { get: () => undefined });
     Object.defineProperty(navigator, "plugins", {
       get: () => [1, 2, 3, 4, 5].map(() => ({})),
