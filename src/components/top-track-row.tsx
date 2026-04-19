@@ -21,13 +21,18 @@ export function TopTrackRow({
   artistName: string;
   artistSlug: string;
 }) {
+  // "Stretched link" pattern: the row itself is a <div>, an invisible anchor
+  // fills the row for Spotify clicks, and the artist Link floats above with
+  // z-10. This avoids illegally nesting <a> inside <a>.
   return (
-    <a
-      href={`https://open.spotify.com/track/${spotifyId}`}
-      target="_blank"
-      rel="noreferrer"
-      className="flex items-center gap-4 px-4 py-4 hover:bg-white/[0.04] transition-colors"
-    >
+    <div className="relative flex items-center gap-4 px-4 py-4 hover:bg-white/[0.04] transition-colors">
+      <a
+        href={`https://open.spotify.com/track/${spotifyId}`}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`Open ${name} on Spotify`}
+        className="absolute inset-0"
+      />
       <span className="display w-8 text-center text-2xl text-white/30 tabular-nums">
         {index + 1}
       </span>
@@ -46,8 +51,7 @@ export function TopTrackRow({
         <div className="text-white truncate">{name}</div>
         <Link
           href={`/artist/${artistSlug}`}
-          onClick={(e) => e.stopPropagation()}
-          className="text-xs text-white/50 hover:text-white transition-colors truncate block"
+          className="relative z-10 text-xs text-white/50 hover:text-white transition-colors truncate inline-block"
         >
           {artistName}
         </Link>
@@ -57,6 +61,6 @@ export function TopTrackRow({
         <span className="text-white/30 text-xs">plays</span>
       </div>
       <span className="text-xs text-white/30 pl-2">↗</span>
-    </a>
+    </div>
   );
 }
