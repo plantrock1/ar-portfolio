@@ -163,6 +163,35 @@ Your live site at **alecveach.vercel.app** automatically shows the updated numbe
 
 ---
 
+## 2.6 Alternative: Deep Refresh without your laptop (GitHub Actions)
+
+If the terminal routine feels like too much, there's an automated version that runs on GitHub's servers — **no laptop, no terminal, no Chrome install required.** It runs on a weekly schedule automatically AND lets you click a button to trigger it on demand from anywhere.
+
+**One-time setup (your helper does this once):**
+
+Open the GitHub repo at [github.com/plantrock1/ar-portfolio](https://github.com/plantrock1/ar-portfolio), then go to **Settings** → **Secrets and variables** → **Actions** → click **New repository secret** for each of these six (same values you pasted into `.env.local`):
+
+- `DATABASE_URL`
+- `SPOTIFY_CLIENT_ID`
+- `SPOTIFY_CLIENT_SECRET`
+- `ADMIN_PASSWORD`
+- `SESSION_SECRET`
+- `CRON_SECRET`
+
+Once set, GitHub automatically runs the refresh every **Sunday at 09:00 UTC** (4am Eastern / 1am Pacific Saturday night into Sunday). You don't need to do anything — updated totals appear on alecveach.vercel.app by Sunday morning.
+
+**To manually trigger anytime** (from any device with a browser, even your phone):
+
+1. Go to [github.com/plantrock1/ar-portfolio/actions](https://github.com/plantrock1/ar-portfolio/actions)
+2. Click **Deep Refresh** in the left sidebar
+3. Click the **Run workflow** dropdown (right side) → **Run workflow** button
+4. Watch the progress — click into the new run to see live logs as it scrapes
+5. ~15 min later, you'll see a green ✓. Refresh alecveach.vercel.app to see updated totals.
+
+**Heads-up:** if your Spotify session cookie expires (~once a year), the scheduled runs will start failing silently (still show as "failed" in Actions). When you notice totals stop updating, follow section 3 below to refresh the cookie, then re-trigger the workflow manually.
+
+---
+
 ## 3. Updating your Spotify session (every ~12 months)
 
 The Spotify cookie stored in the DB expires after about a year, or whenever you "Sign out everywhere" in your Spotify account. When it expires, Deep Refresh will fail immediately with "Spotify session expired — re-import sp_dc cookie in /admin".
