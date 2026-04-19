@@ -39,18 +39,6 @@ export function FeaturedGrid({ items }: { items: Item[] }) {
         <div className="flex items-center gap-0.5 sm:gap-1 text-[10px] uppercase tracking-widest rounded-full border border-white/10 p-0.5 sm:p-1">
           <button
             type="button"
-            onClick={() => toggleCompact(false)}
-            className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-full transition-colors ${
-              !compact
-                ? "bg-white/10 text-white"
-                : "text-white/40 hover:text-white/70"
-            }`}
-            aria-pressed={!compact}
-          >
-            Large
-          </button>
-          <button
-            type="button"
             onClick={() => toggleCompact(true)}
             className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-full transition-colors ${
               compact
@@ -60,6 +48,18 @@ export function FeaturedGrid({ items }: { items: Item[] }) {
             aria-pressed={compact}
           >
             Compact
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleCompact(false)}
+            className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-full transition-colors ${
+              !compact
+                ? "bg-white/10 text-white"
+                : "text-white/40 hover:text-white/70"
+            }`}
+            aria-pressed={!compact}
+          >
+            Large
           </button>
         </div>
       </div>
