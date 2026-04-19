@@ -1,9 +1,11 @@
+import Link from "next/link";
 import {
   getRoster,
   getAggregate,
   getTopTracksOverall,
   getSiteSettings,
   getFeaturedItems,
+  type RosterSort,
 } from "@/lib/queries";
 import { ArtistCard } from "@/components/artist-card";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
@@ -14,9 +16,16 @@ import { formatFullNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ sort?: string }>;
+}) {
+  const { sort } = await searchParams;
+  const sortBy: RosterSort = sort === "alpha" ? "alpha" : "listeners";
+
   const [roster, totals, topTracks, settings, press] = await Promise.all([
-    getRoster(),
+    getRoster(sortBy),
     getAggregate(),
     getTopTracksOverall(5),
     getSiteSettings(),
@@ -97,11 +106,37 @@ export default async function Home() {
         <div className="divider mt-20" />
 
         <section className="pt-14 md:pt-20">
-          <div className="flex items-baseline justify-between mb-10">
+          <div className="flex items-baseline justify-between mb-10 gap-4 flex-wrap">
             <h2 className="display text-3xl md:text-4xl text-white">Roster</h2>
-            <span className="text-xs uppercase tracking-widest text-white/40">
-              {roster.length} {roster.length === 1 ? "artist" : "artists"}
-            </span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest rounded-full border border-white/10 p-1">
+                <Link
+                  href="/"
+                  scroll={false}
+                  className={`px-3 py-1 rounded-full transition-colors ${
+                    sortBy === "listeners"
+                      ? "bg-white text-black"
+                      : "text-white/50 hover:text-white"
+                  }`}
+                >
+                  Monthly listeners
+                </Link>
+                <Link
+                  href="/?sort=alpha"
+                  scroll={false}
+                  className={`px-3 py-1 rounded-full transition-colors ${
+                    sortBy === "alpha"
+                      ? "bg-white text-black"
+                      : "text-white/50 hover:text-white"
+                  }`}
+                >
+                  A–Z
+                </Link>
+              </div>
+              <span className="text-xs uppercase tracking-widest text-white/40">
+                {roster.length} {roster.length === 1 ? "artist" : "artists"}
+              </span>
+            </div>
           </div>
 
           {roster.length === 0 ? (

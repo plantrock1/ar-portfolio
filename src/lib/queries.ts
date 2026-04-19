@@ -10,7 +10,11 @@ export type ArtistWithLatest = typeof schema.artists.$inferSelect & {
   };
 };
 
-export async function getRoster(): Promise<ArtistWithLatest[]> {
+export type RosterSort = "listeners" | "alpha";
+
+export async function getRoster(
+  sort: RosterSort = "listeners",
+): Promise<ArtistWithLatest[]> {
   const artists = await db
     .select()
     .from(schema.artists)
@@ -39,7 +43,7 @@ export async function getRoster(): Promise<ArtistWithLatest[]> {
   const byArtist = new Map<string, (typeof latestByArtist.rows)[number]>();
   for (const row of latestByArtist.rows) byArtist.set(row.artist_id, row);
 
-  return artists.map((a) => {
+  const withLatest = artists.map((a) => {
     const l = byArtist.get(a.id);
     return {
       ...a,
@@ -50,6 +54,22 @@ export async function getRoster(): Promise<ArtistWithLatest[]> {
         capturedAt: l ? l.captured_at : null,
       },
     };
+  });
+
+  if (sort === "alpha") {
+    return withLatest.sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
+  }
+  // default: by monthly listeners desc, name asc as tiebreaker; nulls last
+  return withLatest.sort((a, b) => {
+    const al = a.latest.monthlyListeners;
+    const bl = b.latest.monthlyListeners;
+    if (al === null && bl === null) return a.name.localeCompare(b.name);
+    if (al === null) return 1;
+    if (bl === null) return -1;
+    if (bl !== al) return bl - al;
+    return a.name.localeCompare(b.name);
   });
 }
 
