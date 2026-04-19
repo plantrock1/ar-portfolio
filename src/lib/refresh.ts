@@ -256,7 +256,7 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
                 const [album] = await scrapeAlbumsAuthed([aid], {
                   spDc: session.spDc!,
                   browser,
-                  filterArtistName: row.name,
+                  filterArtistSpotifyId: row.spotifyId,
                 });
                 if (album) {
                   for (const t of album.tracks) {

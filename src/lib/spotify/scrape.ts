@@ -366,8 +366,12 @@ export async function scrapeAlbumsAuthed(
     spDc: string;
     concurrency?: number;
     browser?: Browser;
-    /** If set, keep only tracks where row text contains this artist's name */
-    filterArtistName?: string;
+    /**
+     * If set, keep only tracks whose row contains an `<a href="/artist/{id}">`
+     * link matching this Spotify artist ID. Reliable across collabs, aliases,
+     * and unicode-bearing names.
+     */
+    filterArtistSpotifyId?: string;
   } = { spDc: "" },
 ): Promise<ScrapedAlbum[]> {
   if (albumIds.length === 0) return [];
@@ -386,7 +390,7 @@ export async function scrapeAlbumsAuthed(
         try {
           await setupPage(page, opts.spDc);
           results.push(
-            await scrapeAlbumPage(page, id, opts.filterArtistName),
+            await scrapeAlbumPage(page, id, opts.filterArtistSpotifyId),
           );
         } finally {
           await page.close().catch(() => {});
@@ -407,7 +411,7 @@ export async function scrapeAlbumsAuthed(
 async function scrapeAlbumPage(
   page: Page,
   albumId: string,
-  filterArtistName?: string,
+  filterArtistSpotifyId?: string,
 ): Promise<ScrapedAlbum> {
   try {
     await page.goto(`https://open.spotify.com/album/${albumId}`, {
@@ -421,7 +425,7 @@ async function scrapeAlbumPage(
     await page.evaluate(() => window.scrollTo(0, 400)).catch(() => {});
     await new Promise((r) => setTimeout(r, 2000));
 
-    const data = await page.evaluate((filterName: string | null) => {
+    const data = await page.evaluate((filterArtistId: string | null) => {
       function biggestNumber(text: string): string | null {
         const cleaned = text.replace(/\d+:\d+/g, " ");
         const matches = cleaned.match(/\d{1,3}(?:,\d{3})+|\d{5,}/g);
@@ -454,28 +458,29 @@ async function scrapeAlbumPage(
         albumImageUrl: string | null;
       }[] = [];
       for (const row of rows) {
-        const anchor = row.querySelector(
+        const trackAnchor = row.querySelector(
           'a[href*="/track/"]',
         ) as HTMLAnchorElement | null;
-        if (!anchor) continue;
-        const m = anchor.href.match(/\/track\/([a-zA-Z0-9]{22})/);
+        if (!trackAnchor) continue;
+        const m = trackAnchor.href.match(/\/track\/([a-zA-Z0-9]{22})/);
         if (!m) continue;
         const id = m[1];
         if (seen.has(id)) continue;
-        const name = (anchor.textContent ?? "").trim();
+        const name = (trackAnchor.textContent ?? "").trim();
         if (!name) continue;
 
-        const rowText = row.innerText ?? "";
-
-        // If a filter artist name was passed, only keep tracks that credit them.
-        // Matches against the row's text (which includes artist links beneath
-        // the track name for multi-artist tracks).
-        if (filterName) {
-          const needle = filterName.toLowerCase();
-          const hay = rowText.toLowerCase();
-          if (!hay.includes(needle)) continue;
+        // Filter by artist Spotify ID — exact match on /artist/{id} anchor.
+        if (filterArtistId) {
+          const artistAnchors = Array.from(
+            row.querySelectorAll('a[href*="/artist/"]'),
+          ) as HTMLAnchorElement[];
+          const credited = artistAnchors.some((a) =>
+            a.href.includes(`/artist/${filterArtistId}`),
+          );
+          if (!credited) continue;
         }
 
+        const rowText = row.innerText ?? "";
         const withoutName = name ? rowText.split(name).join(" ") : rowText;
         const streamsText = biggestNumber(withoutName);
         tracks.push({
@@ -488,7 +493,7 @@ async function scrapeAlbumPage(
       }
 
       return { tracks };
-    }, filterArtistName ?? null);
+    }, filterArtistSpotifyId ?? null);
 
     return {
       spotifyId: albumId,
