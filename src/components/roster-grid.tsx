@@ -14,13 +14,14 @@ export function RosterGrid({
   roster: ArtistWithLatest[];
   sortBy: RosterSort;
 }) {
-  // Start in "comfortable" (big cards) for SSR parity; pick up the user's
-  // saved preference after hydration.
-  const [compact, setCompact] = useState(false);
+  // Default to compact — denser grid works better on mobile and still reads
+  // well on desktop. Viewer can flip to Large; choice persists via localStorage.
+  const [compact, setCompact] = useState(true);
   useEffect(() => {
     try {
       const stored = localStorage.getItem(LS_KEY);
-      if (stored === "compact") setCompact(true);
+      if (stored === "large") setCompact(false);
+      else if (stored === "compact") setCompact(true);
     } catch {
       // localStorage unavailable (SSR / private mode) — ignore
     }
@@ -29,7 +30,7 @@ export function RosterGrid({
   function toggleCompact(next: boolean) {
     setCompact(next);
     try {
-      localStorage.setItem(LS_KEY, next ? "compact" : "comfortable");
+      localStorage.setItem(LS_KEY, next ? "compact" : "large");
     } catch {}
   }
 

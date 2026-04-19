@@ -7,6 +7,7 @@ import {
   type RosterSort,
 } from "@/lib/queries";
 import { RosterGrid } from "@/components/roster-grid";
+import { FeaturedGrid } from "@/components/featured-grid";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { Stat } from "@/components/stat";
 import { TopTrackRow } from "@/components/top-track-row";
@@ -154,50 +155,3 @@ export default async function Home({
   );
 }
 
-function FeaturedGrid({
-  items,
-}: {
-  items: {
-    id: string;
-    title: string;
-    url: string;
-    imageUrl: string | null;
-    source: string | null;
-  }[];
-}) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-      {items.map((item) => (
-        <a
-          key={item.id}
-          href={item.url}
-          target="_blank"
-          rel="noreferrer"
-          className="group flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] transition hover:border-white/15 hover:bg-white/[0.04]"
-        >
-          <div className="relative aspect-[16/9] w-full bg-neutral-900">
-            {item.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={item.imageUrl}
-                alt={item.title}
-                className="w-full h-full object-cover transition duration-500 group-hover:scale-[1.02]"
-              />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-950" />
-            )}
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-          </div>
-          <div className="p-4 flex flex-col gap-1">
-            {item.source ? (
-              <div className="text-[10px] uppercase tracking-widest text-white/40">
-                {item.source}
-              </div>
-            ) : null}
-            <div className="text-white text-sm leading-snug">{item.title}</div>
-          </div>
-        </a>
-      ))}
-    </div>
-  );
-}
