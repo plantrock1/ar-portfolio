@@ -140,9 +140,29 @@ export function AdminDashboard({
     router.refresh();
   }
 
+  function optimisticRun(kind: "shallow" | "deep"): RefreshRun {
+    const now = new Date().toISOString();
+    return {
+      kind,
+      status: "running",
+      phase: "starting",
+      message: kind === "deep" ? "Starting deep refresh…" : "Starting refresh…",
+      artistIndex: 0,
+      artistTotal: 0,
+      albumsScraped: 0,
+      albumsTotal: 0,
+      tracksUpserted: 0,
+      startedAt: now,
+      updatedAt: now,
+      completedAt: null,
+      error: null,
+    };
+  }
+
   async function refreshNow() {
     setError(null);
     setMessage(null);
+    setRun(optimisticRun("shallow"));
     startPolling();
     const res = await fetch("/api/cron/refresh");
     const data = await parseResponse(res);
@@ -167,6 +187,7 @@ export function AdminDashboard({
   async function deepRefresh() {
     setError(null);
     setMessage(null);
+    setRun(optimisticRun("deep"));
     startPolling();
     const res = await fetch("/api/cron/deep-refresh");
     const data = await parseResponse(res);
