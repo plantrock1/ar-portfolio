@@ -15,6 +15,15 @@ const nextConfig: NextConfig = {
     ],
   },
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  // Vercel's default file tracer drops @sparticuz/chromium's binary payload
+  // (it lives in node_modules/@sparticuz/chromium/bin/ as a compressed
+  // chromium blob). Explicitly include it for every cron route that runs
+  // the scraper.
+  outputFileTracingIncludes: {
+    "/api/cron/*": [
+      "./node_modules/@sparticuz/chromium/**/*",
+    ],
+  },
 };
 
 export default nextConfig;
