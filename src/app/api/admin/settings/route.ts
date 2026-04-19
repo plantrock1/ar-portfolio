@@ -11,21 +11,36 @@ const SocialsSchema = z
     instagram: z.string().trim().optional(),
     tiktok: z.string().trim().optional(),
     twitter: z.string().trim().optional(),
+    email: z.string().trim().optional(),
     youtube: z.string().trim().optional(),
     soundcloud: z.string().trim().optional(),
     website: z.string().trim().optional(),
   })
   .partial();
 
+const BioPhoto = z
+  .string()
+  .trim()
+  .max(5_500_000)
+  .refine(
+    (s) =>
+      s === "" ||
+      /^https?:\/\//i.test(s) ||
+      /^data:image\/[a-zA-Z0-9+.-]+;base64,/.test(s),
+    { message: "bioPhotoUrl must be a URL or image data: URL" },
+  );
+
 const Body = z
   .object({
     bio: z.string().max(2000).optional(),
+    bioPhotoUrl: BioPhoto.optional().or(z.null()),
     showListenerChart: z.boolean().optional(),
     socials: SocialsSchema.optional(),
   })
   .refine(
     (v) =>
       v.bio !== undefined ||
+      v.bioPhotoUrl !== undefined ||
       v.showListenerChart !== undefined ||
       v.socials !== undefined,
     { message: "no fields to update" },
@@ -41,6 +56,8 @@ export async function POST(req: NextRequest) {
   }
   const patch: Record<string, unknown> = { updatedAt: sql`now()` };
   if (parsed.data.bio !== undefined) patch.bio = parsed.data.bio;
+  if (parsed.data.bioPhotoUrl !== undefined)
+    patch.bioPhotoUrl = parsed.data.bioPhotoUrl || null;
   if (parsed.data.showListenerChart !== undefined)
     patch.showListenerChart = parsed.data.showListenerChart;
   const cleanedSocials = parsed.data.socials
@@ -57,6 +74,7 @@ export async function POST(req: NextRequest) {
     .values({
       id: "main",
       bio: parsed.data.bio ?? "",
+      bioPhotoUrl: parsed.data.bioPhotoUrl || null,
       showListenerChart: parsed.data.showListenerChart ?? false,
       socials: cleanedSocials ?? {},
     })

@@ -4,9 +4,10 @@ const ORDER: (keyof ArtistSocials)[] = [
   "instagram",
   "tiktok",
   "twitter",
-  "youtube",
+  "email",
   "soundcloud",
   "website",
+  "youtube", // legacy — still renders if populated, but no input for new entries
 ];
 
 type IconProps = { className?: string };
@@ -54,6 +55,15 @@ function SoundCloudIcon({ className }: IconProps) {
   );
 }
 
+function MailIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <polyline points="22,6 12,13 2,6" />
+    </svg>
+  );
+}
+
 function GlobeIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -66,11 +76,16 @@ function GlobeIcon({ className }: IconProps) {
 
 const META: Record<
   keyof ArtistSocials,
-  { label: string; Icon: React.ComponentType<IconProps> }
+  { label: string; Icon: React.ComponentType<IconProps>; href?: (v: string) => string }
 > = {
   instagram: { label: "Instagram", Icon: InstagramIcon },
   tiktok: { label: "TikTok", Icon: TikTokIcon },
   twitter: { label: "Twitter / X", Icon: TwitterIcon },
+  email: {
+    label: "Email",
+    Icon: MailIcon,
+    href: (v) => (v.startsWith("mailto:") ? v : `mailto:${v}`),
+  },
   youtube: { label: "YouTube", Icon: YoutubeIcon },
   soundcloud: { label: "SoundCloud", Icon: SoundCloudIcon },
   website: { label: "Website", Icon: GlobeIcon },
@@ -91,13 +106,15 @@ export function SocialIcons({
   return (
     <div className="flex items-center gap-2">
       {entries.map((k) => {
-        const { label, Icon } = META[k];
+        const { label, Icon, href } = META[k];
+        const target = href ? href(socials[k]!) : socials[k];
+        const isExternal = !target?.startsWith("mailto:");
         return (
           <a
             key={k}
-            href={socials[k]}
-            target="_blank"
-            rel="noreferrer"
+            href={target}
+            target={isExternal ? "_blank" : undefined}
+            rel={isExternal ? "noreferrer" : undefined}
             aria-label={label}
             title={label}
             className={`${btnSize} flex items-center justify-center rounded-full border border-white/10 text-white/60 hover:text-white hover:border-white/30 transition-colors`}

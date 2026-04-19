@@ -34,11 +34,21 @@ export default async function Home() {
                 <span className="inline-block w-6 h-px bg-white/30" />
                 A&R Portfolio
               </div>
-              <h1 className="display text-4xl sm:text-5xl md:text-6xl leading-[0.95] text-white">
-                Alec Veach
-              </h1>
+              <div className="flex items-center gap-5 mb-5">
+                {settings.bioPhotoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={settings.bioPhotoUrl}
+                    alt="Alec Veach"
+                    className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border border-white/10 shrink-0"
+                  />
+                ) : null}
+                <h1 className="display text-4xl sm:text-5xl md:text-6xl leading-[0.95] text-white">
+                  Alec Veach
+                </h1>
+              </div>
               {settings.bio ? (
-                <p className="mt-5 max-w-2xl text-base md:text-lg text-white/60 leading-relaxed whitespace-pre-wrap">
+                <p className="max-w-2xl text-base md:text-lg text-white/60 leading-relaxed whitespace-pre-wrap">
                   {settings.bio}
                 </p>
               ) : null}

@@ -15,9 +15,11 @@ export type ArtistSocials = {
   instagram?: string;
   tiktok?: string;
   twitter?: string;
-  youtube?: string;
-  website?: string;
+  email?: string;
   soundcloud?: string;
+  website?: string;
+  /** Legacy — kept so existing data isn't dropped, but hidden from new UI. */
+  youtube?: string;
 };
 
 export const artists = pgTable("artists", {
@@ -128,6 +130,7 @@ export const refreshRuns = pgTable("refresh_runs", {
 export const siteSettings = pgTable("site_settings", {
   id: text("id").primaryKey(),
   bio: text("bio").notNull().default(""),
+  bioPhotoUrl: text("bio_photo_url"),
   socials: jsonb("socials").$type<ArtistSocials>().notNull().default({}),
   showListenerChart: boolean("show_listener_chart").notNull().default(false),
   spotifySpDc: text("spotify_sp_dc"),

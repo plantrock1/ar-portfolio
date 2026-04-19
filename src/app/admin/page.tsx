@@ -34,6 +34,7 @@ export default async function AdminPage() {
       <AdminDashboard
         initialArtists={artists}
         initialBio={settings.bio}
+        initialBioPhotoUrl={settings.bioPhotoUrl}
         initialSocials={settings.socials}
         initialShowListenerChart={settings.showListenerChart}
         initialPress={press.map((p) => ({

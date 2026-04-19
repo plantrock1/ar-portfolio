@@ -35,6 +35,7 @@ type RefreshRun = {
 export function AdminDashboard({
   initialArtists,
   initialBio,
+  initialBioPhotoUrl,
   initialSocials,
   initialShowListenerChart,
   initialPress,
@@ -43,6 +44,7 @@ export function AdminDashboard({
 }: {
   initialArtists: Artist[];
   initialBio: string;
+  initialBioPhotoUrl: string | null;
   initialSocials: ArtistSocials;
   initialShowListenerChart: boolean;
   initialPress: FeaturedItem[];
@@ -60,6 +62,13 @@ export function AdminDashboard({
   const [role, setRole] = useState("");
   const [bio, setBio] = useState(initialBio);
   const [savedBio, setSavedBio] = useState(initialBio);
+  const [bioPhotoUrl, setBioPhotoUrl] = useState<string | null>(
+    initialBioPhotoUrl,
+  );
+  const [savedBioPhotoUrl, setSavedBioPhotoUrl] = useState<string | null>(
+    initialBioPhotoUrl,
+  );
+  const [bioPhotoError, setBioPhotoError] = useState<string | null>(null);
   const [socials, setSocials] = useState<ArtistSocials>(initialSocials ?? {});
   const [savedSocials, setSavedSocials] = useState<ArtistSocials>(
     initialSocials ?? {},
@@ -279,7 +288,11 @@ export function AdminDashboard({
     const res = await fetch("/api/admin/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bio, socials }),
+      body: JSON.stringify({
+        bio,
+        socials,
+        bioPhotoUrl: bioPhotoUrl ?? "",
+      }),
     });
     if (!res.ok) {
       const data = await parseResponse(res);
@@ -288,8 +301,28 @@ export function AdminDashboard({
     }
     setSavedBio(bio);
     setSavedSocials(socials);
+    setSavedBioPhotoUrl(bioPhotoUrl);
     setMessage("Bio saved.");
     startSavingBio(() => router.refresh());
+  }
+
+  async function pickBioPhoto(file: File) {
+    setBioPhotoError(null);
+    if (!file.type.startsWith("image/")) {
+      setBioPhotoError("Not an image");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setBioPhotoError("Image over 4MB — try a smaller file");
+      return;
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(file);
+    });
+    setBioPhotoUrl(dataUrl);
   }
 
   async function toggleChart(next: boolean) {
@@ -398,13 +431,60 @@ export function AdminDashboard({
             Appears under your name on the home page
           </span>
         </div>
-        <textarea
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-          rows={4}
-          placeholder="A&R working with artists across…"
-          className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 resize-y"
-        />
+        <div className="flex gap-4 items-start">
+          <div className="flex flex-col items-center gap-2 shrink-0">
+            <div className="w-24 h-24 rounded-full overflow-hidden border border-white/10 bg-white/5 flex items-center justify-center">
+              {bioPhotoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={bioPhotoUrl}
+                  alt="Bio"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-xs text-white/30">No photo</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <label className="cursor-pointer text-white/60 hover:text-white">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) pickBioPhoto(f);
+                  }}
+                />
+                <span className="underline">
+                  {bioPhotoUrl ? "Replace" : "Upload"}
+                </span>
+              </label>
+              {bioPhotoUrl ? (
+                <>
+                  <span className="text-white/20">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setBioPhotoUrl(null)}
+                    className="text-red-400/70 hover:text-red-400"
+                  >
+                    Remove
+                  </button>
+                </>
+              ) : null}
+            </div>
+            {bioPhotoError ? (
+              <span className="text-xs text-red-400">{bioPhotoError}</span>
+            ) : null}
+          </div>
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            rows={5}
+            placeholder="A&R working with artists across…"
+            className="flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 resize-y"
+          />
+        </div>
         <div className="mt-4">
           <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
             Your social links (appear as icons next to your bio)
@@ -415,7 +495,7 @@ export function AdminDashboard({
                 ["instagram", "Instagram URL"],
                 ["tiktok", "TikTok URL"],
                 ["twitter", "Twitter / X URL"],
-                ["youtube", "YouTube URL"],
+                ["email", "Email address"],
                 ["soundcloud", "SoundCloud URL"],
                 ["website", "Website"],
               ] as const
@@ -433,6 +513,7 @@ export function AdminDashboard({
         {(() => {
           const dirty =
             bio !== savedBio ||
+            bioPhotoUrl !== savedBioPhotoUrl ||
             JSON.stringify(socials) !== JSON.stringify(savedSocials);
           return (
         <div className="mt-3 flex items-center justify-between gap-3">
@@ -529,7 +610,36 @@ export function AdminDashboard({
 
       <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
         <h2 className="display text-xl text-white mb-4">Add artist</h2>
-        <form onSubmit={addArtist} className="grid md:grid-cols-[1fr_200px_auto] gap-3">
+        <BulkAddArtists
+          onAddBatch={async (urls) => {
+            let added = 0;
+            let duplicate = 0;
+            let failed = 0;
+            const failures: string[] = [];
+            for (const url of urls) {
+              const res = await fetch("/api/admin/artists", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ spotifyUrl: url }),
+              });
+              const data = await parseResponse(res);
+              if (!res.ok) {
+                failed += 1;
+                failures.push(`${url}: ${data.error ?? res.status}`);
+                continue;
+              }
+              if (data.duplicate) {
+                duplicate += 1;
+              } else {
+                added += 1;
+                setArtists((xs) => [data.artist, ...xs]);
+              }
+            }
+            router.refresh();
+            return { added, duplicate, failed, failures };
+          }}
+        />
+        <form onSubmit={addArtist} className="grid md:grid-cols-[1fr_200px_auto] gap-3 mt-5">
           <input
             value={spotifyUrl}
             onChange={(e) => setSpotifyUrl(e.target.value)}
@@ -617,6 +727,94 @@ export function AdminDashboard({
         )}
       </section>
     </main>
+  );
+}
+
+function BulkAddArtists({
+  onAddBatch,
+}: {
+  onAddBatch: (urls: string[]) => Promise<{
+    added: number;
+    duplicate: number;
+    failed: number;
+    failures: string[];
+  }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [failDetail, setFailDetail] = useState<string[]>([]);
+
+  const urls = text
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  async function run() {
+    setBusy(true);
+    setSummary(null);
+    setFailDetail([]);
+    const r = await onAddBatch(urls);
+    setBusy(false);
+    setSummary(
+      `Added ${r.added} · ${r.duplicate} already on roster · ${r.failed} failed`,
+    );
+    setFailDetail(r.failures);
+    if (r.added + r.duplicate > 0) setText("");
+  }
+
+  return (
+    <div className="mb-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="text-xs text-white/50 hover:text-white underline underline-offset-2"
+      >
+        {open ? "Hide bulk add ↑" : "Bulk add (paste multiple URLs) ↓"}
+      </button>
+      {open ? (
+        <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-4">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={4}
+            placeholder={
+              "Paste multiple Spotify artist URLs or IDs, one per line:\nhttps://open.spotify.com/artist/...\nhttps://open.spotify.com/artist/...\nspotify:artist:..."
+            }
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 font-mono resize-y"
+          />
+          <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+            <span className="text-white/40">
+              {urls.length === 0 ? "Paste URLs above" : `${urls.length} URL${urls.length === 1 ? "" : "s"}`}
+            </span>
+            <button
+              type="button"
+              onClick={run}
+              disabled={busy || urls.length === 0}
+              className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
+            >
+              {busy ? `Adding ${urls.length}…` : `Add ${urls.length}`}
+            </button>
+          </div>
+          {summary ? (
+            <div className="mt-2 text-xs text-white/60">{summary}</div>
+          ) : null}
+          {failDetail.length > 0 ? (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-red-400/80">
+                {failDetail.length} failures
+              </summary>
+              <ul className="mt-1 text-[11px] text-red-400/70 font-mono whitespace-pre-wrap">
+                {failDetail.map((f, i) => (
+                  <li key={i}>{f}</li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -726,7 +924,7 @@ function ArtistRow({
                 ["instagram", "Instagram URL"],
                 ["tiktok", "TikTok URL"],
                 ["twitter", "Twitter / X URL"],
-                ["youtube", "YouTube URL"],
+                ["email", "Email address"],
                 ["soundcloud", "SoundCloud URL"],
                 ["website", "Website"],
               ] as const
@@ -740,7 +938,7 @@ function ArtistRow({
                   onChange={(e) =>
                     setSocials({ ...socials, [key]: e.target.value })
                   }
-                  placeholder="https://…"
+                  placeholder={key === "email" ? "name@example.com" : "https://…"}
                   className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
                 />
               </div>

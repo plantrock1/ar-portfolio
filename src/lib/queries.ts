@@ -263,6 +263,7 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
 
 export async function getSiteSettings(): Promise<{
   bio: string;
+  bioPhotoUrl: string | null;
   socials: import("@/lib/db/schema").ArtistSocials;
   showListenerChart: boolean;
 }> {
@@ -271,9 +272,10 @@ export async function getSiteSettings(): Promise<{
     .from(schema.siteSettings)
     .where(eq(schema.siteSettings.id, "main"));
   if (rows.length === 0)
-    return { bio: "", socials: {}, showListenerChart: false };
+    return { bio: "", bioPhotoUrl: null, socials: {}, showListenerChart: false };
   return {
     bio: rows[0].bio,
+    bioPhotoUrl: rows[0].bioPhotoUrl ?? null,
     socials: rows[0].socials ?? {},
     showListenerChart: rows[0].showListenerChart,
   };
