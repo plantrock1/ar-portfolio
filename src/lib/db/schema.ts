@@ -8,7 +8,17 @@ import {
   uuid,
   index,
   unique,
+  jsonb,
 } from "drizzle-orm/pg-core";
+
+export type ArtistSocials = {
+  instagram?: string;
+  tiktok?: string;
+  twitter?: string;
+  youtube?: string;
+  website?: string;
+  soundcloud?: string;
+};
 
 export const artists = pgTable("artists", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -18,6 +28,8 @@ export const artists = pgTable("artists", {
   imageUrl: text("image_url"),
   genres: text("genres").array().notNull().default([]),
   role: text("role"),
+  bio: text("bio").notNull().default(""),
+  socials: jsonb("socials").$type<ArtistSocials>().notNull().default({}),
   displayOrder: integer("display_order").notNull().default(0),
   hidden: boolean("hidden").notNull().default(false),
   addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
@@ -115,6 +127,7 @@ export const refreshRuns = pgTable("refresh_runs", {
 export const siteSettings = pgTable("site_settings", {
   id: text("id").primaryKey(),
   bio: text("bio").notNull().default(""),
+  showListenerChart: boolean("show_listener_chart").notNull().default(false),
   spotifySpDc: text("spotify_sp_dc"),
   spotifySessionStatus: text("spotify_session_status").notNull().default("unknown"),
   spotifySessionUpdatedAt: timestamp("spotify_session_updated_at", {
@@ -123,6 +136,17 @@ export const siteSettings = pgTable("site_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+});
+
+export const featuredItems = pgTable("featured_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  kind: text("kind").notNull(), // 'press' | 'media'
+  title: text("title").notNull(),
+  url: text("url").notNull(),
+  imageUrl: text("image_url"),
+  source: text("source"), // optional label, e.g., "Rolling Stone" or "YouTube"
+  displayOrder: integer("display_order").notNull().default(0),
+  addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type Artist = typeof artists.$inferSelect;

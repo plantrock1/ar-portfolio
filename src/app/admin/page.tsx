@@ -4,7 +4,7 @@ import { AdminDashboard } from "./admin-dashboard";
 import { db, schema } from "@/lib/db";
 import { desc } from "drizzle-orm";
 import { SiteHeader } from "@/components/site-header";
-import { getSiteSettings, getAggregate } from "@/lib/queries";
+import { getSiteSettings, getAggregate, getFeaturedItems } from "@/lib/queries";
 import { getSpotifySession } from "@/lib/spotify/session";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +20,15 @@ export default async function AdminPage() {
     );
   }
 
-  const [artists, settings, aggregate, session] = await Promise.all([
-    db.select().from(schema.artists).orderBy(desc(schema.artists.addedAt)),
-    getSiteSettings(),
-    getAggregate(),
-    getSpotifySession(),
-  ]);
+  const [artists, settings, aggregate, session, press, media] =
+    await Promise.all([
+      db.select().from(schema.artists).orderBy(desc(schema.artists.addedAt)),
+      getSiteSettings(),
+      getAggregate(),
+      getSpotifySession(),
+      getFeaturedItems("press"),
+      getFeaturedItems("media"),
+    ]);
 
   return (
     <>
@@ -33,6 +36,15 @@ export default async function AdminPage() {
       <AdminDashboard
         initialArtists={artists}
         initialBio={settings.bio}
+        initialShowListenerChart={settings.showListenerChart}
+        initialPress={press.map((p) => ({
+          ...p,
+          addedAt: new Date(p.addedAt).toISOString(),
+        }))}
+        initialMedia={media.map((p) => ({
+          ...p,
+          addedAt: new Date(p.addedAt).toISOString(),
+        }))}
         lastRefreshedAt={aggregate.asOf ? new Date(aggregate.asOf).toISOString() : null}
         session={{
           hasCookie: !!session.spDc,

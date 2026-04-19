@@ -258,13 +258,31 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
   }));
 }
 
-export async function getSiteSettings(): Promise<{ bio: string }> {
+export async function getSiteSettings(): Promise<{
+  bio: string;
+  showListenerChart: boolean;
+}> {
   const rows = await db
     .select()
     .from(schema.siteSettings)
     .where(eq(schema.siteSettings.id, "main"));
-  if (rows.length === 0) return { bio: "" };
-  return { bio: rows[0].bio };
+  if (rows.length === 0) return { bio: "", showListenerChart: false };
+  return {
+    bio: rows[0].bio,
+    showListenerChart: rows[0].showListenerChart,
+  };
+}
+
+export type FeaturedItem = typeof schema.featuredItems.$inferSelect;
+
+export async function getFeaturedItems(
+  kind: "press" | "media",
+): Promise<FeaturedItem[]> {
+  return db
+    .select()
+    .from(schema.featuredItems)
+    .where(eq(schema.featuredItems.kind, kind))
+    .orderBy(asc(schema.featuredItems.displayOrder), asc(schema.featuredItems.addedAt));
 }
 
 export async function getAggregateHistory() {

@@ -6,11 +6,14 @@ import {
   getArtistHistory,
   getArtistTopTracks,
   getArtistTotalStreams,
+  getSiteSettings,
 } from "@/lib/queries";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { Stat } from "@/components/stat";
 import { GrowthChart } from "@/components/growth-chart";
+import { ArtistSocialsRow } from "@/components/artist-socials";
 import { formatNumber } from "@/lib/utils";
+import type { ArtistSocials } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -38,10 +41,11 @@ export default async function ArtistPage({
   const artist = await getArtistBySlug(slug);
   if (!artist) notFound();
 
-  const [history, tracks, totalStreams] = await Promise.all([
+  const [history, tracks, totalStreams, settings] = await Promise.all([
     getArtistHistory(artist.id),
     getArtistTopTracks(artist.id, 5),
     getArtistTotalStreams(artist.id),
+    getSiteSettings(),
   ]);
 
   const latest = history[history.length - 1] ?? null;
@@ -97,6 +101,7 @@ export default async function ArtistPage({
                 </span>
               ))}
             </div>
+            <ArtistSocialsRow socials={artist.socials as ArtistSocials | null} />
             <a
               href={`https://open.spotify.com/artist/${artist.spotifyId}`}
               target="_blank"
@@ -107,6 +112,17 @@ export default async function ArtistPage({
             </a>
           </div>
         </section>
+
+        {artist.bio ? (
+          <>
+            <div className="divider" />
+            <section className="py-12">
+              <p className="max-w-3xl text-lg text-white/70 leading-relaxed whitespace-pre-wrap">
+                {artist.bio}
+              </p>
+            </section>
+          </>
+        ) : null}
 
         <div className="divider" />
 
@@ -123,18 +139,21 @@ export default async function ArtistPage({
           </div>
         </section>
 
-        <div className="divider" />
-
-        <section className="py-12">
-          <h3 className="display text-2xl text-white mb-5">
-            Monthly listeners over time
-          </h3>
-          <GrowthChart
-            label="Monthly Listeners"
-            data={monthlyListenersSeries}
-            color="#1db954"
-          />
-        </section>
+        {settings.showListenerChart ? (
+          <>
+            <div className="divider" />
+            <section className="py-12">
+              <h3 className="display text-2xl text-white mb-5">
+                Monthly listeners over time
+              </h3>
+              <GrowthChart
+                label="Monthly Listeners"
+                data={monthlyListenersSeries}
+                color="#1db954"
+              />
+            </section>
+          </>
+        ) : null}
 
         <div className="divider" />
 
@@ -147,9 +166,12 @@ export default async function ArtistPage({
           ) : (
             <div className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
               {tracks.map((t, i) => (
-                <div
+                <a
                   key={t.id}
-                  className="flex items-center gap-4 px-4 py-3 hover:bg-white/[0.02]"
+                  href={`https://open.spotify.com/track/${t.spotifyId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-4 px-4 py-3 hover:bg-white/[0.04] transition-colors"
                 >
                   <span className="w-6 text-center text-sm text-white/30 tabular-nums">
                     {i + 1}
@@ -181,15 +203,8 @@ export default async function ArtistPage({
                   <div className="hidden md:block text-xs text-white/40 tabular-nums w-12 text-right">
                     {formatDuration(t.durationMs)}
                   </div>
-                  <a
-                    href={`https://open.spotify.com/track/${t.spotifyId}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-white/40 hover:text-white"
-                  >
-                    ↗
-                  </a>
-                </div>
+                  <span className="text-xs text-white/30 group-hover:text-white/60">↗</span>
+                </a>
               ))}
             </div>
           )}

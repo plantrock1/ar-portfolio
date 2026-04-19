@@ -3,7 +3,18 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import type { Artist } from "@/lib/db/schema";
+import type { Artist, ArtistSocials } from "@/lib/db/schema";
+
+type FeaturedItem = {
+  id: string;
+  kind: string;
+  title: string;
+  url: string;
+  imageUrl: string | null;
+  source: string | null;
+  displayOrder: number;
+  addedAt: string;
+};
 
 type RefreshRun = {
   kind: "shallow" | "deep";
@@ -24,11 +35,17 @@ type RefreshRun = {
 export function AdminDashboard({
   initialArtists,
   initialBio,
+  initialShowListenerChart,
+  initialPress,
+  initialMedia,
   lastRefreshedAt,
   session,
 }: {
   initialArtists: Artist[];
   initialBio: string;
+  initialShowListenerChart: boolean;
+  initialPress: FeaturedItem[];
+  initialMedia: FeaturedItem[];
   lastRefreshedAt: string | null;
   session: {
     hasCookie: boolean;
@@ -43,6 +60,9 @@ export function AdminDashboard({
   const [role, setRole] = useState("");
   const [bio, setBio] = useState(initialBio);
   const [savedBio, setSavedBio] = useState(initialBio);
+  const [showChart, setShowChart] = useState(initialShowListenerChart);
+  const [press, setPress] = useState(initialPress);
+  const [media, setMedia] = useState(initialMedia);
   const [spDc, setSpDc] = useState("");
   const [sessionState, setSessionState] = useState(session);
   const [message, setMessage] = useState<string | null>(null);
@@ -52,6 +72,7 @@ export function AdminDashboard({
   const [isDeepRefreshing, startDeepRefresh] = useTransition();
   const [isSavingBio, startSavingBio] = useTransition();
   const [isSavingSession, startSavingSession] = useTransition();
+  const [editingArtistId, setEditingArtistId] = useState<string | null>(null);
   const [run, setRun] = useState<RefreshRun | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -267,6 +288,77 @@ export function AdminDashboard({
     startSavingBio(() => router.refresh());
   }
 
+  async function toggleChart(next: boolean) {
+    setShowChart(next);
+    await fetch("/api/admin/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ showListenerChart: next }),
+    });
+    router.refresh();
+  }
+
+  async function saveArtist(
+    id: string,
+    patch: { bio?: string; socials?: ArtistSocials; role?: string },
+  ) {
+    const res = await fetch("/api/admin/artists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...patch }),
+    });
+    if (!res.ok) {
+      const data = await parseResponse(res);
+      setError(data.error ?? "Failed to save artist");
+      return false;
+    }
+    setArtists((xs) =>
+      xs.map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              bio: patch.bio ?? a.bio,
+              socials: patch.socials ?? a.socials,
+              role: patch.role ?? a.role,
+            }
+          : a,
+      ),
+    );
+    return true;
+  }
+
+  async function addFeatured(
+    kind: "press" | "media",
+    body: { title: string; url: string; imageUrl?: string; source?: string },
+  ) {
+    const res = await fetch("/api/admin/featured", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, ...body }),
+    });
+    const data = await parseResponse(res);
+    if (!res.ok) {
+      setError(data.error ?? "Failed to add");
+      return false;
+    }
+    const setter = kind === "press" ? setPress : setMedia;
+    setter((xs) => [...xs, data.item]);
+    router.refresh();
+    return true;
+  }
+
+  async function removeFeatured(kind: "press" | "media", id: string) {
+    if (!confirm("Remove this item?")) return;
+    await fetch("/api/admin/featured", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const setter = kind === "press" ? setPress : setMedia;
+    setter((xs) => xs.filter((x) => x.id !== id));
+    router.refresh();
+  }
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 pt-12 pb-20">
       <div className="flex items-center justify-between mb-10">
@@ -309,19 +401,48 @@ export function AdminDashboard({
           placeholder="A&R working with artists across…"
           className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 resize-y"
         />
-        <div className="mt-3 flex items-center justify-end gap-3">
-          <span className="text-xs text-white/40">
-            {bio.length}/2000 chars
-          </span>
-          <button
-            onClick={saveBio}
-            disabled={isSavingBio || bio === savedBio}
-            className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
-          >
-            {isSavingBio ? "Saving…" : bio === savedBio ? "Saved" : "Save bio"}
-          </button>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showChart}
+              onChange={(e) => toggleChart(e.target.checked)}
+              className="accent-[#1db954]"
+            />
+            Show monthly listeners growth chart on artist pages
+          </label>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-white/40">
+              {bio.length}/2000 chars
+            </span>
+            <button
+              onClick={saveBio}
+              disabled={isSavingBio || bio === savedBio}
+              className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
+            >
+              {isSavingBio ? "Saving…" : bio === savedBio ? "Saved" : "Save bio"}
+            </button>
+          </div>
         </div>
       </section>
+
+      <FeaturedSection
+        kind="press"
+        title="Featured press"
+        subtitle="Articles, interviews, playlists. Shown on the home page."
+        items={press}
+        onAdd={addFeatured}
+        onRemove={removeFeatured}
+      />
+
+      <FeaturedSection
+        kind="media"
+        title="Featured media"
+        subtitle="YouTube links auto-fetch thumbnails. Shown on the home page."
+        items={media}
+        onAdd={addFeatured}
+        onRemove={removeFeatured}
+      />
 
       <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
         <div className="flex items-baseline justify-between mb-4">
@@ -457,46 +578,309 @@ export function AdminDashboard({
         ) : (
           <ul className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
             {artists.map((a) => (
-              <li
+              <ArtistRow
                 key={a.id}
-                className="flex items-center gap-4 px-4 py-3 hover:bg-white/[0.02]"
-              >
-                {a.imageUrl ? (
-                  <Image
-                    src={a.imageUrl}
-                    alt={a.name}
-                    width={40}
-                    height={40}
-                    className="rounded-full"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-neutral-800" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="text-white truncate">{a.name}</div>
-                  <div className="text-xs text-white/40 truncate">
-                    {a.role ?? "—"} · /{a.slug}
-                  </div>
-                </div>
-                <a
-                  href={`/artist/${a.slug}`}
-                  target="_blank"
-                  className="text-xs text-white/40 hover:text-white"
-                >
-                  View
-                </a>
-                <button
-                  onClick={() => deleteArtist(a.id)}
-                  className="text-xs text-red-400/70 hover:text-red-400 px-2"
-                >
-                  Remove
-                </button>
-              </li>
+                artist={a}
+                expanded={editingArtistId === a.id}
+                onToggle={() =>
+                  setEditingArtistId(editingArtistId === a.id ? null : a.id)
+                }
+                onSave={(patch) => saveArtist(a.id, patch)}
+                onDelete={() => deleteArtist(a.id)}
+              />
             ))}
           </ul>
         )}
       </section>
     </main>
+  );
+}
+
+function ArtistRow({
+  artist,
+  expanded,
+  onToggle,
+  onSave,
+  onDelete,
+}: {
+  artist: Artist;
+  expanded: boolean;
+  onToggle: () => void;
+  onSave: (patch: { bio?: string; socials?: ArtistSocials; role?: string }) => Promise<boolean>;
+  onDelete: () => void;
+}) {
+  const [bio, setBio] = useState(artist.bio ?? "");
+  const [role, setRole] = useState(artist.role ?? "");
+  const [socials, setSocials] = useState<ArtistSocials>(
+    (artist.socials ?? {}) as ArtistSocials,
+  );
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    const ok = await onSave({ bio, role, socials });
+    setSaving(false);
+    if (ok) {
+      setSavedMsg("Saved");
+      setTimeout(() => setSavedMsg(null), 1500);
+    }
+  }
+
+  return (
+    <li className="flex flex-col">
+      <div
+        className="flex items-center gap-4 px-4 py-3 hover:bg-white/[0.02] cursor-pointer"
+        onClick={onToggle}
+      >
+        {artist.imageUrl ? (
+          <Image
+            src={artist.imageUrl}
+            alt={artist.name}
+            width={40}
+            height={40}
+            className="rounded-full"
+          />
+        ) : (
+          <div className="w-10 h-10 rounded-full bg-neutral-800" />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="text-white truncate">{artist.name}</div>
+          <div className="text-xs text-white/40 truncate">
+            {artist.role ?? "—"} · /{artist.slug}
+          </div>
+        </div>
+        <a
+          href={`/artist/${artist.slug}`}
+          target="_blank"
+          onClick={(e) => e.stopPropagation()}
+          className="text-xs text-white/40 hover:text-white"
+        >
+          View
+        </a>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="text-xs text-red-400/70 hover:text-red-400 px-2"
+        >
+          Remove
+        </button>
+        <span className="text-white/30 text-xs w-4 text-center">
+          {expanded ? "▾" : "▸"}
+        </span>
+      </div>
+      {expanded ? (
+        <div className="px-4 py-4 bg-black/30 border-t border-white/5 flex flex-col gap-3">
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-white/40">
+              Role
+            </label>
+            <input
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              placeholder="e.g., Signed 2023 / Producer"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-white/40">
+              Bio
+            </label>
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              rows={3}
+              placeholder="Short bio shown on the artist page"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 resize-y"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                ["instagram", "Instagram URL"],
+                ["tiktok", "TikTok URL"],
+                ["twitter", "Twitter / X URL"],
+                ["youtube", "YouTube URL"],
+                ["soundcloud", "SoundCloud URL"],
+                ["website", "Website"],
+              ] as const
+            ).map(([key, label]) => (
+              <div key={key}>
+                <label className="text-[10px] uppercase tracking-widest text-white/40">
+                  {label}
+                </label>
+                <input
+                  value={(socials[key] as string) ?? ""}
+                  onChange={(e) =>
+                    setSocials({ ...socials, [key]: e.target.value })
+                  }
+                  placeholder="https://…"
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-end gap-3">
+            {savedMsg ? (
+              <span className="text-xs text-green-400">{savedMsg}</span>
+            ) : null}
+            <button
+              onClick={save}
+              disabled={saving}
+              className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function FeaturedSection({
+  kind,
+  title,
+  subtitle,
+  items,
+  onAdd,
+  onRemove,
+}: {
+  kind: "press" | "media";
+  title: string;
+  subtitle: string;
+  items: FeaturedItem[];
+  onAdd: (
+    kind: "press" | "media",
+    body: { title: string; url: string; imageUrl?: string; source?: string },
+  ) => Promise<boolean>;
+  onRemove: (kind: "press" | "media", id: string) => void;
+}) {
+  const [t, setT] = useState("");
+  const [u, setU] = useState("");
+  const [img, setImg] = useState("");
+  const [src, setSrc] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setAdding(true);
+    const ok = await onAdd(kind, {
+      title: t,
+      url: u,
+      imageUrl: img || undefined,
+      source: src || undefined,
+    });
+    setAdding(false);
+    if (ok) {
+      setT("");
+      setU("");
+      setImg("");
+      setSrc("");
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
+      <div className="flex items-baseline justify-between mb-2">
+        <h2 className="display text-xl text-white">{title}</h2>
+        <span className="text-xs text-white/40">
+          {items.length} {items.length === 1 ? "item" : "items"}
+        </span>
+      </div>
+      <p className="text-xs text-white/50 mb-4">{subtitle}</p>
+
+      <form onSubmit={submit} className="grid md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 mb-4">
+        <input
+          value={t}
+          onChange={(e) => setT(e.target.value)}
+          placeholder="Title"
+          required
+          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+        />
+        <input
+          value={u}
+          onChange={(e) => setU(e.target.value)}
+          placeholder="Link URL"
+          required
+          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+        />
+        <input
+          value={img}
+          onChange={(e) => setImg(e.target.value)}
+          placeholder={
+            kind === "media"
+              ? "Image URL (optional; YouTube auto)"
+              : "Image URL"
+          }
+          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+        />
+        <input
+          value={src}
+          onChange={(e) => setSrc(e.target.value)}
+          placeholder="Source (optional)"
+          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+        />
+        <button
+          type="submit"
+          disabled={adding || !t || !u}
+          className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
+        >
+          {adding ? "Adding…" : "Add"}
+        </button>
+      </form>
+
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-white/10 p-6 text-center text-white/40 text-sm">
+          Nothing here yet.
+        </div>
+      ) : (
+        <ul className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
+          {items.map((item) => (
+            <li
+              key={item.id}
+              className="flex items-center gap-4 px-3 py-2 hover:bg-white/[0.02]"
+            >
+              {item.imageUrl ? (
+                <Image
+                  src={item.imageUrl}
+                  alt={item.title}
+                  width={64}
+                  height={40}
+                  className="rounded object-cover w-16 h-10"
+                  unoptimized
+                />
+              ) : (
+                <div className="w-16 h-10 rounded bg-neutral-800" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-white text-sm truncate">{item.title}</div>
+                <div className="text-xs text-white/40 truncate">
+                  {item.source ? `${item.source} · ` : ""}
+                  {item.url}
+                </div>
+              </div>
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-white/40 hover:text-white"
+              >
+                Open
+              </a>
+              <button
+                onClick={() => onRemove(kind, item.id)}
+                className="text-xs text-red-400/70 hover:text-red-400 px-2"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

@@ -5,6 +5,7 @@ import {
   getAggregate,
   getTopTracksOverall,
   getSiteSettings,
+  getFeaturedItems,
 } from "@/lib/queries";
 import { ArtistCard } from "@/components/artist-card";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
@@ -14,11 +15,13 @@ import { formatFullNumber, formatNumber } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [roster, totals, topTracks, settings] = await Promise.all([
+  const [roster, totals, topTracks, settings, press, media] = await Promise.all([
     getRoster(),
     getAggregate(),
     getTopTracksOverall(5),
     getSiteSettings(),
+    getFeaturedItems("press"),
+    getFeaturedItems("media"),
   ]);
 
   return (
@@ -114,9 +117,12 @@ export default async function Home() {
               </div>
               <ol className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
                 {topTracks.map((t, i) => (
-                  <li
+                  <a
                     key={t.spotifyId}
-                    className="flex items-center gap-4 px-4 py-4 hover:bg-white/[0.02]"
+                    href={`https://open.spotify.com/track/${t.spotifyId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-4 px-4 py-4 hover:bg-white/[0.04] transition-colors"
                   >
                     <span className="display w-8 text-center text-2xl text-white/30 tabular-nums">
                       {i + 1}
@@ -136,6 +142,7 @@ export default async function Home() {
                       <div className="text-white truncate">{t.name}</div>
                       <Link
                         href={`/artist/${t.artistSlug}`}
+                        onClick={(e) => e.stopPropagation()}
                         className="text-xs text-white/50 hover:text-white transition-colors truncate block"
                       >
                         {t.artistName}
@@ -147,22 +154,91 @@ export default async function Home() {
                       </span>
                       <span className="text-white/30 text-xs">plays</span>
                     </div>
-                    <a
-                      href={`https://open.spotify.com/track/${t.spotifyId}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-white/40 hover:text-white pl-2"
-                    >
-                      ↗
-                    </a>
-                  </li>
+                    <span className="text-xs text-white/30 pl-2">↗</span>
+                  </a>
                 ))}
               </ol>
+            </section>
+          </>
+        ) : null}
+
+        {press.length > 0 ? (
+          <>
+            <div className="divider mt-20" />
+            <section className="pt-14 md:pt-20">
+              <div className="flex items-baseline justify-between mb-10">
+                <h2 className="display text-3xl md:text-4xl text-white">
+                  Featured press
+                </h2>
+              </div>
+              <FeaturedGrid items={press} />
+            </section>
+          </>
+        ) : null}
+
+        {media.length > 0 ? (
+          <>
+            <div className="divider mt-20" />
+            <section className="pt-14 md:pt-20">
+              <div className="flex items-baseline justify-between mb-10">
+                <h2 className="display text-3xl md:text-4xl text-white">
+                  Featured media
+                </h2>
+              </div>
+              <FeaturedGrid items={media} />
             </section>
           </>
         ) : null}
       </main>
       <SiteFooter />
     </>
+  );
+}
+
+function FeaturedGrid({
+  items,
+}: {
+  items: {
+    id: string;
+    title: string;
+    url: string;
+    imageUrl: string | null;
+    source: string | null;
+  }[];
+}) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      {items.map((item) => (
+        <a
+          key={item.id}
+          href={item.url}
+          target="_blank"
+          rel="noreferrer"
+          className="group flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] transition hover:border-white/15 hover:bg-white/[0.04]"
+        >
+          <div className="relative aspect-[16/9] w-full bg-neutral-900">
+            {item.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={item.imageUrl}
+                alt={item.title}
+                className="w-full h-full object-cover transition duration-500 group-hover:scale-[1.02]"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-950" />
+            )}
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+          </div>
+          <div className="p-4 flex flex-col gap-1">
+            {item.source ? (
+              <div className="text-[10px] uppercase tracking-widest text-white/40">
+                {item.source}
+              </div>
+            ) : null}
+            <div className="text-white text-sm leading-snug">{item.title}</div>
+          </div>
+        </a>
+      ))}
+    </div>
   );
 }

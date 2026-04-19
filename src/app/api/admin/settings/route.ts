@@ -6,9 +6,14 @@ import { sql } from "drizzle-orm";
 
 export const runtime = "nodejs";
 
-const Body = z.object({
-  bio: z.string().max(2000),
-});
+const Body = z
+  .object({
+    bio: z.string().max(2000).optional(),
+    showListenerChart: z.boolean().optional(),
+  })
+  .refine((v) => v.bio !== undefined || v.showListenerChart !== undefined, {
+    message: "no fields to update",
+  });
 
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) {
@@ -18,12 +23,21 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }
+  const patch: Record<string, unknown> = { updatedAt: sql`now()` };
+  if (parsed.data.bio !== undefined) patch.bio = parsed.data.bio;
+  if (parsed.data.showListenerChart !== undefined)
+    patch.showListenerChart = parsed.data.showListenerChart;
+
   await db
     .insert(schema.siteSettings)
-    .values({ id: "main", bio: parsed.data.bio })
+    .values({
+      id: "main",
+      bio: parsed.data.bio ?? "",
+      showListenerChart: parsed.data.showListenerChart ?? false,
+    })
     .onConflictDoUpdate({
       target: schema.siteSettings.id,
-      set: { bio: parsed.data.bio, updatedAt: sql`now()` },
+      set: patch,
     });
   return NextResponse.json({ ok: true });
 }

@@ -122,11 +122,24 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
+const SocialsSchema = z
+  .object({
+    instagram: z.string().trim().optional(),
+    tiktok: z.string().trim().optional(),
+    twitter: z.string().trim().optional(),
+    youtube: z.string().trim().optional(),
+    website: z.string().trim().optional(),
+    soundcloud: z.string().trim().optional(),
+  })
+  .partial();
+
 const PatchBody = z.object({
   id: z.string().uuid(),
   role: z.string().trim().optional(),
   displayOrder: z.number().int().optional(),
   hidden: z.boolean().optional(),
+  bio: z.string().max(4000).optional(),
+  socials: SocialsSchema.optional(),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -137,7 +150,19 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }
-  const { id, ...rest } = parsed.data;
-  await db.update(schema.artists).set(rest).where(eq(schema.artists.id, id));
+  const { id, socials, ...rest } = parsed.data;
+  // Drop empty-string social values so they don't clutter the JSON blob.
+  const cleanedSocials = socials
+    ? Object.fromEntries(
+        Object.entries(socials).filter(([, v]) => typeof v === "string" && v.length > 0),
+      )
+    : undefined;
+  await db
+    .update(schema.artists)
+    .set({
+      ...rest,
+      ...(cleanedSocials !== undefined ? { socials: cleanedSocials } : {}),
+    })
+    .where(eq(schema.artists.id, id));
   return NextResponse.json({ ok: true });
 }
