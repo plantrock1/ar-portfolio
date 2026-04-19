@@ -152,14 +152,18 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
   try {
     await updateRun({ phase: "session", message: "Verifying Spotify session…" });
 
+    // checkSession is a best-effort pre-flight. Some environments (datacenter
+    // IPs like GitHub Actions runners) make Spotify serve a slightly different
+    // homepage that our "Your Library" sniff misses — even when the cookie is
+    // fully valid. So we log a warning but do NOT abort on a negative result.
+    // Final source of truth is whether the actual scrape returns data; we
+    // flip session status based on hits at the end.
     const check = await checkSession(session.spDc);
     if (!check.authenticated) {
-      await markSessionStatus("expired");
-      throw new Error(
-        "Spotify session expired. Re-import sp_dc cookie in /admin.",
+      console.warn(
+        "[deep] session pre-check didn't see 'Your Library' — proceeding anyway; will verify via scrape results",
       );
     }
-    await markSessionStatus("ok");
 
     if (roster.length === 0) {
       await completeRun("done");
@@ -367,6 +371,17 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
       await updateRun({
         message: `Streams updated: ${streamHits}/${streamResults.length} succeeded${streamMisses ? ` (${streamMisses} retained prior values)` : ""}`,
       });
+
+      // Final session-status verdict based on actual scrape results. If we
+      // pulled data, the cookie is fine; if we got nothing at all, it's dead.
+      if (scrapeHits > 0 || streamHits > 0) {
+        await markSessionStatus("ok");
+      } else {
+        await markSessionStatus("expired");
+        throw new Error(
+          "Spotify session appears dead — no data returned. Re-import sp_dc cookie in /admin.",
+        );
+      }
     } finally {
       await browser.close().catch(() => {});
     }
