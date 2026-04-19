@@ -791,7 +791,7 @@ function FeaturedSection({
   return (
     <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
       <div className="flex items-baseline justify-between mb-2">
-        <h2 className="display text-xl text-white">Featured press</h2>
+        <h2 className="display text-xl text-white">Featured media</h2>
         <span className="text-xs text-white/40">
           {items.length} {items.length === 1 ? "item" : "items"}
         </span>

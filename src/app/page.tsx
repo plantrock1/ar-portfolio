@@ -26,44 +26,43 @@ export default async function Home() {
     <>
       <SiteHeader />
       <main className="mx-auto w-full max-w-6xl px-6 pb-20">
-        <section className="pt-12 pb-10 md:pt-20 md:pb-14">
-          <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-white/40 mb-4">
-            <span className="inline-block w-6 h-px bg-white/30" />
-            A&R Portfolio
-          </div>
-          <h1 className="display text-4xl sm:text-5xl md:text-6xl leading-[0.95] text-white">
-            Alec Veach
-          </h1>
-          {settings.bio ? (
-            <p className="mt-5 max-w-2xl text-base md:text-lg text-white/60 leading-relaxed whitespace-pre-wrap">
-              {settings.bio}
-            </p>
-          ) : null}
-        </section>
-
-        <div className="divider" />
-
-        <section className="py-14 md:py-20">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-10 md:gap-14">
-            <Stat label="Total artists" value={totals.artistCount} />
-            <Stat
-              label="Combined monthly listeners"
-              value={totals.totalMonthlyListeners}
-              sub={
-                totals.totalMonthlyListeners !== null
-                  ? formatFullNumber(totals.totalMonthlyListeners)
-                  : "Awaiting refresh"
-              }
-            />
-            <Stat
-              label="Combined streams"
-              value={totals.totalStreams}
-              sub={
-                totals.totalStreams !== null
-                  ? formatFullNumber(totals.totalStreams)
-                  : "Awaiting refresh"
-              }
-            />
+        <section className="pt-12 pb-12 md:pt-20 md:pb-16">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] md:gap-16 items-start">
+            <div>
+              <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-white/40 mb-4">
+                <span className="inline-block w-6 h-px bg-white/30" />
+                A&R Portfolio
+              </div>
+              <h1 className="display text-4xl sm:text-5xl md:text-6xl leading-[0.95] text-white">
+                Alec Veach
+              </h1>
+              {settings.bio ? (
+                <p className="mt-5 max-w-2xl text-base md:text-lg text-white/60 leading-relaxed whitespace-pre-wrap">
+                  {settings.bio}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-col gap-6 mt-10 md:mt-0 md:min-w-[220px]">
+              <Stat label="Total artists" value={totals.artistCount} />
+              <Stat
+                label="Combined monthly listeners"
+                value={totals.totalMonthlyListeners}
+                sub={
+                  totals.totalMonthlyListeners !== null
+                    ? formatFullNumber(totals.totalMonthlyListeners)
+                    : "Awaiting refresh"
+                }
+              />
+              <Stat
+                label="Combined streams"
+                value={totals.totalStreams}
+                sub={
+                  totals.totalStreams !== null
+                    ? formatFullNumber(totals.totalStreams)
+                    : "Awaiting refresh"
+                }
+              />
+            </div>
           </div>
         </section>
 
@@ -73,7 +72,7 @@ export default async function Home() {
             <section className="pt-14 md:pt-20">
               <div className="flex items-baseline justify-between mb-10">
                 <h2 className="display text-3xl md:text-4xl text-white">
-                  Featured press
+                  Featured media
                 </h2>
               </div>
               <FeaturedGrid items={press} />
