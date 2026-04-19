@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }
-  if (!checkPassword(parsed.data.password)) {
+  if (!(await checkPassword(parsed.data.password))) {
     return NextResponse.json({ error: "invalid password" }, { status: 401 });
   }
   await createAdminSession();

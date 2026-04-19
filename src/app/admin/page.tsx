@@ -38,6 +38,7 @@ export default async function AdminPage() {
         initialBioPhotoUrl={settings.bioPhotoUrl}
         initialSocials={settings.socials}
         initialShowListenerChart={settings.showListenerChart}
+        initialSectionOrder={settings.sectionOrder}
         initialPress={press.map((p) => ({
           ...p,
           addedAt: new Date(p.addedAt).toISOString(),

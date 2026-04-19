@@ -319,12 +319,19 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
   }));
 }
 
+const DEFAULT_SECTION_ORDER: import("@/lib/db/schema").SectionId[] = [
+  "roster",
+  "top_tracks",
+  "featured_media",
+];
+
 export async function getSiteSettings(): Promise<{
   displayName: string;
   bio: string;
   bioPhotoUrl: string | null;
   socials: import("@/lib/db/schema").ArtistSocials;
   showListenerChart: boolean;
+  sectionOrder: import("@/lib/db/schema").SectionId[];
 }> {
   const rows = await db
     .select()
@@ -337,6 +344,7 @@ export async function getSiteSettings(): Promise<{
       bioPhotoUrl: null,
       socials: {},
       showListenerChart: false,
+      sectionOrder: DEFAULT_SECTION_ORDER,
     };
   return {
     displayName: rows[0].displayName ?? "",
@@ -344,6 +352,10 @@ export async function getSiteSettings(): Promise<{
     bioPhotoUrl: rows[0].bioPhotoUrl ?? null,
     socials: rows[0].socials ?? {},
     showListenerChart: rows[0].showListenerChart,
+    sectionOrder:
+      (rows[0].sectionOrder?.length ?? 0) > 0
+        ? rows[0].sectionOrder!
+        : DEFAULT_SECTION_ORDER,
   };
 }
 

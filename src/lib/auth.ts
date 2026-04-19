@@ -1,8 +1,17 @@
 import { cookies } from "next/headers";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+import { db, schema } from "@/lib/db";
+import { eq } from "drizzle-orm";
 
 const COOKIE_NAME = "ar_admin";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
+const SCRYPT_KEYLEN = 64;
+const scryptAsync = promisify(scrypt) as (
+  password: string | Buffer,
+  salt: string | Buffer,
+  keylen: number,
+) => Promise<Buffer>;
 
 function sign(value: string): string {
   const secret = process.env.SESSION_SECRET;
@@ -17,10 +26,65 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
-export function checkPassword(input: string): boolean {
+/**
+ * Hash a password using scrypt. Returns `scrypt$<saltHex>$<hashHex>`.
+ * Storage format keeps salt bundled with the hash so no separate column.
+ */
+export async function hashPassword(plain: string): Promise<string> {
+  const salt = randomBytes(16);
+  const hash = await scryptAsync(plain, salt, SCRYPT_KEYLEN);
+  return `scrypt$${salt.toString("hex")}$${hash.toString("hex")}`;
+}
+
+async function verifyHash(plain: string, stored: string): Promise<boolean> {
+  const parts = stored.split("$");
+  if (parts.length !== 3 || parts[0] !== "scrypt") return false;
+  const salt = Buffer.from(parts[1], "hex");
+  const expected = Buffer.from(parts[2], "hex");
+  try {
+    const actual = await scryptAsync(plain, salt, expected.length);
+    if (actual.length !== expected.length) return false;
+    return timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify an admin password. Prefers the DB-stored hash (set via Change
+ * Password UI); falls back to the ADMIN_PASSWORD env var for bootstrap
+ * (first login on a fresh deployment, or if the admin forgets the DB one).
+ */
+export async function checkPassword(input: string): Promise<boolean> {
+  // Try DB hash first
+  const rows = await db
+    .select({ hash: schema.siteSettings.adminPasswordHash })
+    .from(schema.siteSettings)
+    .where(eq(schema.siteSettings.id, "main"));
+  const storedHash = rows[0]?.hash ?? null;
+
+  if (storedHash) {
+    return verifyHash(input, storedHash);
+  }
+
+  // Fallback to env var
   const expected = process.env.ADMIN_PASSWORD;
   if (!expected) return false;
   return safeEqual(input, expected);
+}
+
+/**
+ * Persist a new admin password hash. Once set, env ADMIN_PASSWORD is no
+ * longer consulted — the DB value is authoritative.
+ */
+export async function setAdminPasswordHash(hash: string) {
+  await db
+    .insert(schema.siteSettings)
+    .values({ id: "main", adminPasswordHash: hash })
+    .onConflictDoUpdate({
+      target: schema.siteSettings.id,
+      set: { adminPasswordHash: hash },
+    });
 }
 
 export async function createAdminSession() {

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   getRoster,
   getAggregate,
@@ -7,12 +6,13 @@ import {
   getFeaturedItems,
   type RosterSort,
 } from "@/lib/queries";
-import { ArtistCard } from "@/components/artist-card";
+import { RosterGrid } from "@/components/roster-grid";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { Stat } from "@/components/stat";
 import { TopTrackRow } from "@/components/top-track-row";
 import { SocialIcons } from "@/components/social-icons";
 import { formatFullNumber } from "@/lib/utils";
+import type { SectionId } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +33,57 @@ export default async function Home({
   ]);
 
   const displayName = settings.displayName?.trim() || "A&R Portfolio";
+
+  // Each section renders only when it has content; ordering from site_settings.
+  const sections: Record<SectionId, React.ReactNode> = {
+    roster: (
+      <section className="pt-14 md:pt-20">
+        <RosterGrid roster={roster} sortBy={sortBy} />
+      </section>
+    ),
+    top_tracks:
+      topTracks.length > 0 ? (
+        <section className="pt-14 md:pt-20">
+          <div className="flex items-baseline justify-between mb-10">
+            <h2 className="display text-3xl md:text-4xl text-white">
+              Top tracks
+            </h2>
+            <span className="text-xs uppercase tracking-widest text-white/40">
+              By streams, across the roster
+            </span>
+          </div>
+          <ol className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
+            {topTracks.map((t, i) => (
+              <TopTrackRow
+                key={t.spotifyId}
+                index={i}
+                spotifyId={t.spotifyId}
+                name={t.name}
+                albumImageUrl={t.albumImageUrl}
+                streams={t.streams}
+                artistName={t.artistName}
+                artistSlug={t.artistSlug}
+              />
+            ))}
+          </ol>
+        </section>
+      ) : null,
+    featured_media:
+      press.length > 0 ? (
+        <section className="pt-14 md:pt-20">
+          <div className="flex items-baseline justify-between mb-10">
+            <h2 className="display text-3xl md:text-4xl text-white">
+              Featured media
+            </h2>
+          </div>
+          <FeaturedGrid items={press} />
+        </section>
+      ) : null,
+  };
+
+  const visibleSections = settings.sectionOrder
+    .map((id) => ({ id, node: sections[id] }))
+    .filter((s) => s.node !== null);
 
   return (
     <>
@@ -91,110 +142,12 @@ export default async function Home({
           </div>
         </section>
 
-        {press.length > 0 ? (
-          <>
-            <div className="divider" />
-            <section className="pt-14 md:pt-20">
-              <div className="flex items-baseline justify-between mb-10">
-                <h2 className="display text-3xl md:text-4xl text-white">
-                  Featured media
-                </h2>
-              </div>
-              <FeaturedGrid items={press} />
-            </section>
-          </>
-        ) : null}
-
-        <div className="divider mt-20" />
-
-        <section className="pt-14 md:pt-20">
-          <div className="flex items-baseline justify-between mb-10 gap-4 flex-wrap">
-            <h2 className="display text-3xl md:text-4xl text-white">Roster</h2>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest rounded-full border border-white/10 p-1">
-                <Link
-                  href="/"
-                  scroll={false}
-                  className={`px-3 py-1 rounded-full transition-colors ${
-                    sortBy === "listeners"
-                      ? "bg-white text-black"
-                      : "text-white/50 hover:text-white"
-                  }`}
-                >
-                  Monthly listeners
-                </Link>
-                <Link
-                  href="/?sort=alpha"
-                  scroll={false}
-                  className={`px-3 py-1 rounded-full transition-colors ${
-                    sortBy === "alpha"
-                      ? "bg-white text-black"
-                      : "text-white/50 hover:text-white"
-                  }`}
-                >
-                  A–Z
-                </Link>
-              </div>
-              <span className="text-xs uppercase tracking-widest text-white/40">
-                {roster.length} {roster.length === 1 ? "artist" : "artists"}
-              </span>
-            </div>
+        {visibleSections.map((s, i) => (
+          <div key={s.id}>
+            {i > 0 ? <div className="divider mt-20" /> : <div className="divider" />}
+            {s.node}
           </div>
-
-          {roster.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/10 p-12 text-center text-white/50">
-              No artists added yet. Head to{" "}
-              <a href="/admin" className="underline text-white/80">
-                /admin
-              </a>{" "}
-              to add the first one.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {roster.map((a) => (
-                <ArtistCard
-                  key={a.id}
-                  slug={a.slug}
-                  name={a.name}
-                  imageUrl={a.imageUrl}
-                  role={a.role}
-                  monthlyListeners={a.latest.monthlyListeners}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {topTracks.length > 0 ? (
-          <>
-            <div className="divider mt-20" />
-            <section className="pt-14 md:pt-20">
-              <div className="flex items-baseline justify-between mb-10">
-                <h2 className="display text-3xl md:text-4xl text-white">
-                  Top tracks
-                </h2>
-                <span className="text-xs uppercase tracking-widest text-white/40">
-                  By streams, across the roster
-                </span>
-              </div>
-              <ol className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
-                {topTracks.map((t, i) => (
-                  <TopTrackRow
-                    key={t.spotifyId}
-                    index={i}
-                    spotifyId={t.spotifyId}
-                    name={t.name}
-                    albumImageUrl={t.albumImageUrl}
-                    streams={t.streams}
-                    artistName={t.artistName}
-                    artistSlug={t.artistSlug}
-                  />
-                ))}
-              </ol>
-            </section>
-          </>
-        ) : null}
-
+        ))}
       </main>
       <SiteFooter displayName={settings.displayName} />
     </>

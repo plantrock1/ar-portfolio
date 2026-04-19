@@ -128,6 +128,8 @@ export const refreshRuns = pgTable("refresh_runs", {
   error: text("error"),
 });
 
+export type SectionId = "roster" | "top_tracks" | "featured_media";
+
 export const siteSettings = pgTable("site_settings", {
   id: text("id").primaryKey(),
   displayName: text("display_name").notNull().default(""),
@@ -135,6 +137,11 @@ export const siteSettings = pgTable("site_settings", {
   bioPhotoUrl: text("bio_photo_url"),
   socials: jsonb("socials").$type<ArtistSocials>().notNull().default({}),
   showListenerChart: boolean("show_listener_chart").notNull().default(false),
+  sectionOrder: jsonb("section_order")
+    .$type<SectionId[]>()
+    .notNull()
+    .default(["roster", "top_tracks", "featured_media"]),
+  adminPasswordHash: text("admin_password_hash"),
   spotifySpDc: text("spotify_sp_dc"),
   spotifySessionStatus: text("spotify_session_status").notNull().default("unknown"),
   spotifySessionUpdatedAt: timestamp("spotify_session_updated_at", {

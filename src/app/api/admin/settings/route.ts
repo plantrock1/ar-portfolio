@@ -30,6 +30,9 @@ const BioPhoto = z
     { message: "bioPhotoUrl must be a URL or image data: URL" },
   );
 
+const SECTION_IDS = ["roster", "top_tracks", "featured_media"] as const;
+const SectionOrderSchema = z.array(z.enum(SECTION_IDS)).length(3);
+
 const Body = z
   .object({
     displayName: z.string().max(100).optional(),
@@ -37,6 +40,7 @@ const Body = z
     bioPhotoUrl: BioPhoto.optional().or(z.null()),
     showListenerChart: z.boolean().optional(),
     socials: SocialsSchema.optional(),
+    sectionOrder: SectionOrderSchema.optional(),
   })
   .refine(
     (v) =>
@@ -44,7 +48,8 @@ const Body = z
       v.bio !== undefined ||
       v.bioPhotoUrl !== undefined ||
       v.showListenerChart !== undefined ||
-      v.socials !== undefined,
+      v.socials !== undefined ||
+      v.sectionOrder !== undefined,
     { message: "no fields to update" },
   );
 
@@ -72,6 +77,8 @@ export async function POST(req: NextRequest) {
       )
     : undefined;
   if (cleanedSocials !== undefined) patch.socials = cleanedSocials;
+  if (parsed.data.sectionOrder !== undefined)
+    patch.sectionOrder = parsed.data.sectionOrder;
 
   await db
     .insert(schema.siteSettings)

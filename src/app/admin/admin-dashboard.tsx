@@ -3,7 +3,13 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import type { Artist, ArtistSocials } from "@/lib/db/schema";
+import type { Artist, ArtistSocials, SectionId } from "@/lib/db/schema";
+
+const SECTION_LABELS: Record<SectionId, string> = {
+  roster: "Roster",
+  top_tracks: "Top tracks",
+  featured_media: "Featured media",
+};
 
 type FeaturedItem = {
   id: string;
@@ -39,6 +45,7 @@ export function AdminDashboard({
   initialBioPhotoUrl,
   initialSocials,
   initialShowListenerChart,
+  initialSectionOrder,
   initialPress,
   lastRefreshedAt,
   session,
@@ -49,6 +56,7 @@ export function AdminDashboard({
   initialBioPhotoUrl: string | null;
   initialSocials: ArtistSocials;
   initialShowListenerChart: boolean;
+  initialSectionOrder: SectionId[];
   initialPress: FeaturedItem[];
   lastRefreshedAt: string | null;
   session: {
@@ -83,12 +91,20 @@ export function AdminDashboard({
   const [sessionState, setSessionState] = useState(session);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(initialSectionOrder);
   const [isAdding, startAdding] = useTransition();
   const [isRefreshing, startRefresh] = useTransition();
   const [isDeepRefreshing, startDeepRefresh] = useTransition();
   const [isSavingBio, startSavingBio] = useTransition();
   const [isSavingSession, startSavingSession] = useTransition();
   const [editingArtistId, setEditingArtistId] = useState<string | null>(null);
+  // Change password state
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwMsg, setPwMsg] = useState<string | null>(null);
+  const [pwErr, setPwErr] = useState<string | null>(null);
+  const [pwSaving, setPwSaving] = useState(false);
   const [run, setRun] = useState<RefreshRun | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -269,6 +285,53 @@ export function AdminDashboard({
     startSavingSession(() => router.refresh());
   }
 
+  async function moveSection(index: number, dir: -1 | 1) {
+    const next = [...sectionOrder];
+    const target = index + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setSectionOrder(next);
+    await fetch("/api/admin/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sectionOrder: next }),
+    });
+    router.refresh();
+  }
+
+  async function changePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPwErr(null);
+    setPwMsg(null);
+    if (pwNew !== pwConfirm) {
+      setPwErr("New passwords don't match");
+      return;
+    }
+    if (pwNew.length < 8) {
+      setPwErr("New password must be at least 8 characters");
+      return;
+    }
+    setPwSaving(true);
+    const res = await fetch("/api/admin/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        currentPassword: pwCurrent,
+        newPassword: pwNew,
+      }),
+    });
+    const data = await parseResponse(res);
+    setPwSaving(false);
+    if (!res.ok) {
+      setPwErr(data.error ?? "Failed to change password");
+      return;
+    }
+    setPwMsg("Password updated. It'll be required next time you sign in.");
+    setPwCurrent("");
+    setPwNew("");
+    setPwConfirm("");
+  }
+
   async function clearSession() {
     if (!confirm("Remove stored Spotify session cookie?")) return;
     await fetch("/api/admin/spotify-session", { method: "DELETE" });
@@ -444,7 +507,7 @@ export function AdminDashboard({
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="e.g., Alec Veach"
+            placeholder="e.g., John Smith"
             className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
           />
         </div>
@@ -534,6 +597,44 @@ export function AdminDashboard({
             bioPhotoUrl !== savedBioPhotoUrl ||
             JSON.stringify(socials) !== JSON.stringify(savedSocials);
           return (
+        <>
+        <div className="mt-5 border-t border-white/5 pt-5">
+          <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
+            Homepage section order
+          </div>
+          <ul className="flex flex-col gap-1 mb-2">
+            {sectionOrder.map((s, i) => (
+              <li
+                key={s}
+                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+              >
+                <span className="text-white">
+                  {SECTION_LABELS[s]}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => moveSection(i, -1)}
+                    disabled={i === 0}
+                    className="w-6 h-6 rounded border border-white/10 text-white/60 hover:text-white hover:border-white/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                    aria-label="Move up"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveSection(i, 1)}
+                    disabled={i === sectionOrder.length - 1}
+                    className="w-6 h-6 rounded border border-white/10 text-white/60 hover:text-white hover:border-white/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                    aria-label="Move down"
+                  >
+                    ↓
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
         <div className="mt-3 flex items-center justify-between gap-3">
           <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer select-none">
             <input
@@ -557,73 +658,9 @@ export function AdminDashboard({
             </button>
           </div>
         </div>
+        </>
           );
         })()}
-      </section>
-
-      <FeaturedSection
-        items={press}
-        onAdd={addFeatured}
-        onRemove={removeFeatured}
-      />
-
-      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
-        <div className="flex items-baseline justify-between mb-4">
-          <h2 className="display text-xl text-white">Spotify session</h2>
-          <SessionBadge status={sessionState.hasCookie ? sessionState.status : "absent"} />
-        </div>
-        <p className="text-xs text-white/50 leading-relaxed mb-4">
-          Pasting your <code className="text-white/80">sp_dc</code> cookie lets the scraper
-          see per-track stream counts on album pages. One-time setup; cookie lasts
-          ~12 months.
-        </p>
-        <details className="text-xs text-white/50 mb-4 rounded border border-white/10 bg-black/20">
-          <summary className="cursor-pointer px-3 py-2 hover:text-white/80">
-            How to get your sp_dc cookie →
-          </summary>
-          <ol className="list-decimal list-inside px-4 pb-3 pt-1 space-y-1 text-white/60">
-            <li>Log into <a href="https://open.spotify.com" target="_blank" rel="noreferrer" className="underline text-white/80">open.spotify.com</a> in Chrome</li>
-            <li>Open DevTools (⌥⌘I) → Application tab → Cookies → <code>https://open.spotify.com</code></li>
-            <li>Find the row named <code>sp_dc</code>, copy the Value column</li>
-            <li>Paste it below and hit Save</li>
-          </ol>
-        </details>
-        {sessionState.hasCookie ? (
-          <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3 mb-3">
-            <div className="flex flex-col">
-              <span className="text-sm text-white">
-                Cookie stored: <code className="text-white/60">{sessionState.preview}</code>
-              </span>
-              <span className="text-xs text-white/40">
-                {sessionState.updatedAt
-                  ? `Saved ${new Date(sessionState.updatedAt).toLocaleString()}`
-                  : ""}
-              </span>
-            </div>
-            <button
-              onClick={clearSession}
-              className="text-xs text-red-400/70 hover:text-red-400"
-            >
-              Remove
-            </button>
-          </div>
-        ) : null}
-        <div className="grid md:grid-cols-[1fr_auto] gap-3">
-          <input
-            type="password"
-            value={spDc}
-            onChange={(e) => setSpDc(e.target.value)}
-            placeholder={sessionState.hasCookie ? "Paste a new cookie to replace…" : "Paste sp_dc cookie value…"}
-            className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 font-mono text-sm"
-          />
-          <button
-            onClick={saveSession}
-            disabled={isSavingSession || !spDc.trim()}
-            className="rounded-lg bg-white px-4 py-3 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
-          >
-            {isSavingSession ? "Saving…" : "Save cookie"}
-          </button>
-        </div>
       </section>
 
       <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
@@ -743,6 +780,122 @@ export function AdminDashboard({
             ))}
           </ul>
         )}
+      </section>
+
+      <div className="mt-8">
+        <FeaturedSection
+          items={press}
+          onAdd={addFeatured}
+          onRemove={removeFeatured}
+        />
+      </div>
+
+      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
+        <div className="flex items-baseline justify-between mb-4">
+          <h2 className="display text-xl text-white">Spotify session</h2>
+          <SessionBadge status={sessionState.hasCookie ? sessionState.status : "absent"} />
+        </div>
+        <p className="text-xs text-white/50 leading-relaxed mb-4">
+          Pasting your <code className="text-white/80">sp_dc</code> cookie lets the scraper
+          see per-track stream counts on album pages. One-time setup; cookie lasts
+          ~12 months.
+        </p>
+        <details className="text-xs text-white/50 mb-4 rounded border border-white/10 bg-black/20">
+          <summary className="cursor-pointer px-3 py-2 hover:text-white/80">
+            How to get your sp_dc cookie →
+          </summary>
+          <ol className="list-decimal list-inside px-4 pb-3 pt-1 space-y-1 text-white/60">
+            <li>Log into <a href="https://open.spotify.com" target="_blank" rel="noreferrer" className="underline text-white/80">open.spotify.com</a> in Chrome</li>
+            <li>Open DevTools (⌥⌘I) → Application tab → Cookies → <code>https://open.spotify.com</code></li>
+            <li>Find the row named <code>sp_dc</code>, copy the Value column</li>
+            <li>Paste it below and hit Save</li>
+          </ol>
+        </details>
+        {sessionState.hasCookie ? (
+          <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3 mb-3">
+            <div className="flex flex-col">
+              <span className="text-sm text-white">
+                Cookie stored: <code className="text-white/60">{sessionState.preview}</code>
+              </span>
+              <span className="text-xs text-white/40">
+                {sessionState.updatedAt
+                  ? `Saved ${new Date(sessionState.updatedAt).toLocaleString()}`
+                  : ""}
+              </span>
+            </div>
+            <button
+              onClick={clearSession}
+              className="text-xs text-red-400/70 hover:text-red-400"
+            >
+              Remove
+            </button>
+          </div>
+        ) : null}
+        <div className="grid md:grid-cols-[1fr_auto] gap-3">
+          <input
+            type="password"
+            value={spDc}
+            onChange={(e) => setSpDc(e.target.value)}
+            placeholder={sessionState.hasCookie ? "Paste a new cookie to replace…" : "Paste sp_dc cookie value…"}
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 font-mono text-sm"
+          />
+          <button
+            onClick={saveSession}
+            disabled={isSavingSession || !spDc.trim()}
+            className="rounded-lg bg-white px-4 py-3 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
+          >
+            {isSavingSession ? "Saving…" : "Save cookie"}
+          </button>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
+        <h2 className="display text-xl text-white mb-4">Admin password</h2>
+        <p className="text-xs text-white/50 mb-4">
+          Change the password used to sign into <code>/admin</code>. Minimum 8 characters.
+        </p>
+        <form onSubmit={changePassword} className="grid md:grid-cols-3 gap-3">
+          <input
+            type="password"
+            value={pwCurrent}
+            onChange={(e) => setPwCurrent(e.target.value)}
+            placeholder="Current password"
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+            autoComplete="current-password"
+            required
+          />
+          <input
+            type="password"
+            value={pwNew}
+            onChange={(e) => setPwNew(e.target.value)}
+            placeholder="New password"
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+            autoComplete="new-password"
+            required
+          />
+          <input
+            type="password"
+            value={pwConfirm}
+            onChange={(e) => setPwConfirm(e.target.value)}
+            placeholder="Confirm new password"
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+            autoComplete="new-password"
+            required
+          />
+          <div className="md:col-span-3 flex items-center justify-between text-sm">
+            <div className="text-white/50">
+              {pwMsg ? <span className="text-green-400">{pwMsg}</span> : null}
+              {pwErr ? <span className="text-red-400">{pwErr}</span> : null}
+            </div>
+            <button
+              type="submit"
+              disabled={pwSaving || !pwCurrent || !pwNew || !pwConfirm}
+              className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
+            >
+              {pwSaving ? "Updating…" : "Change password"}
+            </button>
+          </div>
+        </form>
       </section>
     </main>
   );
