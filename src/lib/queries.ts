@@ -272,14 +272,14 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
     artist_slug: string;
   }>(sql`
     WITH latest_track AS (
-      -- Dedupe by spotify_id. When multiple roster artists have the same
-      -- track, prefer the PRIMARY artist's row so the attribution is
-      -- correct (e.g., "bada bing" is primarily diamond*, featuring Tezzus).
+      -- Dedupe by spotify_id, preferring the PRIMARY artist's row for
+      -- collab attribution.
       SELECT DISTINCT ON (tr.spotify_id)
         tr.spotify_id,
         tr.name,
         tr.album_image_url,
         tr.artist_id,
+        tr.isrc,
         ts.streams
       FROM tracks tr
       JOIN track_snapshots ts ON ts.track_id = tr.id
@@ -288,6 +288,14 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
         AND tr.hidden = false
         AND ts.streams IS NOT NULL
       ORDER BY tr.spotify_id, tr.is_primary DESC, ts.captured_at DESC
+    ),
+    -- For each unique recording (ISRC or spotify_id fallback), keep the
+    -- row with the highest streams — usually the primary release.
+    best_per_recording AS (
+      SELECT DISTINCT ON (COALESCE(isrc, spotify_id))
+        spotify_id, name, album_image_url, artist_id, streams
+      FROM latest_track
+      ORDER BY COALESCE(isrc, spotify_id), streams DESC
     )
     SELECT
       lt.spotify_id,
@@ -296,9 +304,8 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
       lt.streams::text AS streams,
       a.name AS artist_name,
       a.slug AS artist_slug
-    FROM latest_track lt
+    FROM best_per_recording lt
     JOIN artists a ON a.id = lt.artist_id
-    WHERE lt.streams IS NOT NULL
     ORDER BY lt.streams DESC
     LIMIT ${limit}
   `);
