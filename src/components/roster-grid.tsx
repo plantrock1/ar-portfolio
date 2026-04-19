@@ -36,26 +36,29 @@ export function RosterGrid({
 
   return (
     <>
-      <div className="flex items-baseline justify-between mb-10 gap-4 flex-wrap">
-        <h2 className="display text-3xl md:text-4xl text-white">Roster</h2>
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center justify-between mb-8 md:mb-10 gap-2 sm:gap-3">
+        <h2 className="display text-2xl sm:text-3xl md:text-4xl text-white shrink-0">
+          Roster
+        </h2>
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           {/* Sort pill */}
-          <div className="flex items-center gap-1 text-xs tracking-wide rounded-full border border-white/10 p-1">
+          <div className="flex items-center gap-0.5 sm:gap-1 text-[10px] sm:text-xs tracking-wide rounded-full border border-white/10 p-0.5 sm:p-1">
             <Link
               href="/"
               scroll={false}
-              className={`px-3 py-1 rounded-full transition-colors ${
+              className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-full transition-colors ${
                 sortBy === "listeners"
                   ? "bg-white/10 text-white"
                   : "text-white/40 hover:text-white/70"
               }`}
             >
-              Monthly Listeners
+              <span className="sm:hidden">Listeners</span>
+              <span className="hidden sm:inline">Monthly Listeners</span>
             </Link>
             <Link
               href="/?sort=alpha"
               scroll={false}
-              className={`px-3 py-1 rounded-full transition-colors ${
+              className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-full transition-colors ${
                 sortBy === "alpha"
                   ? "bg-white/10 text-white"
                   : "text-white/40 hover:text-white/70"
@@ -65,11 +68,11 @@ export function RosterGrid({
             </Link>
           </div>
           {/* Density toggle */}
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest rounded-full border border-white/10 p-1">
+          <div className="flex items-center gap-0.5 sm:gap-1 text-[10px] uppercase tracking-widest rounded-full border border-white/10 p-0.5 sm:p-1">
             <button
               type="button"
               onClick={() => toggleCompact(false)}
-              className={`px-3 py-1 rounded-full transition-colors ${
+              className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-full transition-colors ${
                 !compact
                   ? "bg-white/10 text-white"
                   : "text-white/40 hover:text-white/70"
@@ -81,7 +84,7 @@ export function RosterGrid({
             <button
               type="button"
               onClick={() => toggleCompact(true)}
-              className={`px-3 py-1 rounded-full transition-colors ${
+              className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-full transition-colors ${
                 compact
                   ? "bg-white/10 text-white"
                   : "text-white/40 hover:text-white/70"
@@ -91,7 +94,7 @@ export function RosterGrid({
               Compact
             </button>
           </div>
-          <span className="text-xs uppercase tracking-widest text-white/40">
+          <span className="hidden md:inline text-xs uppercase tracking-widest text-white/40">
             {roster.length} {roster.length === 1 ? "artist" : "artists"}
           </span>
         </div>
