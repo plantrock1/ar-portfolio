@@ -1165,8 +1165,15 @@ function FeaturedSection({
 }
 
 function ProgressBar({ run }: { run: RefreshRun }) {
-  // Rough total = artistTotal (for shallow) OR albumsTotal (for deep).
-  const denom = run.kind === "deep" ? Math.max(run.albumsTotal, 1) : Math.max(run.artistTotal, 1);
+  // For deep runs, the same counter is reused across phases — label it
+  // based on which phase we're in (albums vs. individual tracks).
+  const isTrackPhase = run.phase === "tracks";
+  const unit = run.kind === "deep"
+    ? isTrackPhase ? "tracks" : "albums"
+    : "artists";
+  const denom = run.kind === "deep"
+    ? Math.max(run.albumsTotal, 1)
+    : Math.max(run.artistTotal, 1);
   const done = run.kind === "deep" ? run.albumsScraped : run.artistIndex;
   const pct = Math.min(100, Math.round((done / denom) * 100));
   return (
@@ -1180,8 +1187,8 @@ function ProgressBar({ run }: { run: RefreshRun }) {
         </div>
         <div className="text-xs text-white/50 tabular-nums">
           {run.kind === "deep"
-            ? `${run.albumsScraped}/${run.albumsTotal} albums · ${run.tracksUpserted} tracks`
-            : `${run.artistIndex}/${run.artistTotal} artists · ${run.tracksUpserted} tracks`}
+            ? `${run.albumsScraped}/${run.albumsTotal} ${unit} · ${run.tracksUpserted} upserted`
+            : `${run.artistIndex}/${run.artistTotal} ${unit} · ${run.tracksUpserted} tracks`}
         </div>
       </div>
       <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">

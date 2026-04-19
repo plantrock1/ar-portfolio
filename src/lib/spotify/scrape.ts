@@ -528,6 +528,136 @@ async function scrapeAlbumPage(
 }
 
 // ============================================================================
+// Track-page scrape — the only place Spotify shows per-track play counts
+// beyond the artist's top 10. Requires auth cookie.
+// ============================================================================
+
+export type ScrapedTrackStreams = {
+  spotifyId: string;
+  streams: number | null;
+  error?: string;
+};
+
+export async function scrapeTrackStreams(
+  spotifyIds: string[],
+  opts: {
+    spDc: string;
+    concurrency?: number;
+    onOne?: (done: number, total: number, r: ScrapedTrackStreams) => Promise<void> | void;
+    browser?: Browser;
+  },
+): Promise<ScrapedTrackStreams[]> {
+  if (spotifyIds.length === 0) return [];
+  if (!opts.spDc) throw new Error("scrapeTrackStreams requires sp_dc");
+  const concurrency = Math.max(1, opts.concurrency ?? 2);
+  const browser = opts.browser ?? (await launchBrowser());
+  const ownsBrowser = !opts.browser;
+  try {
+    const results: ScrapedTrackStreams[] = [];
+    const queue = [...spotifyIds];
+    let done = 0;
+    const total = spotifyIds.length;
+
+    async function worker() {
+      while (queue.length) {
+        const id = queue.shift();
+        if (!id) return;
+        const page = await browser.newPage();
+        let result: ScrapedTrackStreams;
+        try {
+          await setupPage(page, opts.spDc);
+          result = await scrapeTrackPage(page, id);
+        } catch (e) {
+          result = {
+            spotifyId: id,
+            streams: null,
+            error: e instanceof Error ? e.message : String(e),
+          };
+        } finally {
+          await page.close().catch(() => {});
+        }
+        results.push(result);
+        done += 1;
+        if (opts.onOne) await opts.onOne(done, total, result);
+        // Light jitter — keep Spotify happy, stay under tab-limit
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, total) }, () => worker()),
+    );
+    return results;
+  } finally {
+    if (ownsBrowser) await browser.close().catch(() => {});
+  }
+}
+
+async function scrapeTrackPage(
+  page: Page,
+  spotifyId: string,
+): Promise<ScrapedTrackStreams> {
+  try {
+    await page.goto(`https://open.spotify.com/track/${spotifyId}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 25_000,
+    });
+    // The big play count is near the top of the hydrated page — wait for
+    // anything number-looking or the play button to appear.
+    await page
+      .waitForFunction(
+        () => /\d{1,3}(,\d{3})+|\d{5,}/.test(document.body.innerText),
+        { timeout: 15_000 },
+      )
+      .catch(() => null);
+    await dismissCookieBanner(page);
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const data = await page.evaluate(() => {
+      // Strategy: find the first big number in the hero area of the page
+      // (before the "Popular" or "Recommended" recommendation tracklist).
+      const body = document.body.innerText;
+      // Cut off at any recommendation section — we want the current track's
+      // play count, not the popular tracks' numbers we'd also see.
+      const cutoffPoints = [
+        body.indexOf("Popular"),
+        body.indexOf("Recommended"),
+        body.indexOf("Fans also"),
+        body.indexOf("More by"),
+        body.indexOf("Artist pick"),
+      ].filter((i) => i >= 0);
+      const cutoff = cutoffPoints.length ? Math.min(...cutoffPoints) : body.length;
+      const hero = body.slice(0, cutoff).replace(/\d+:\d+/g, " ");
+      const matches = hero.match(/\d{1,3}(?:,\d{3})+|\d{5,}/g);
+      if (!matches || matches.length === 0) return { streamsText: null };
+      // The first big number in the hero is the play count. Sometimes the
+      // duration sneaks in even after cutoff; pick the LARGEST as backup.
+      let best = matches[0];
+      let bestN = Number(best.replace(/,/g, ""));
+      for (const m of matches) {
+        const n = Number(m.replace(/,/g, ""));
+        if (n > bestN) {
+          bestN = n;
+          best = m;
+        }
+      }
+      return { streamsText: best };
+    });
+
+    return {
+      spotifyId,
+      streams: parseCount(data.streamsText),
+    };
+  } catch (e) {
+    return {
+      spotifyId,
+      streams: null,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+// ============================================================================
 // Deep scrape — combine artist + album scrape into union of tracks per artist
 // ============================================================================
 
