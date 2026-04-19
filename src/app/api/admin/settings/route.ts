@@ -32,6 +32,7 @@ const BioPhoto = z
 
 const Body = z
   .object({
+    displayName: z.string().max(100).optional(),
     bio: z.string().max(2000).optional(),
     bioPhotoUrl: BioPhoto.optional().or(z.null()),
     showListenerChart: z.boolean().optional(),
@@ -39,6 +40,7 @@ const Body = z
   })
   .refine(
     (v) =>
+      v.displayName !== undefined ||
       v.bio !== undefined ||
       v.bioPhotoUrl !== undefined ||
       v.showListenerChart !== undefined ||
@@ -55,6 +57,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }
   const patch: Record<string, unknown> = { updatedAt: sql`now()` };
+  if (parsed.data.displayName !== undefined)
+    patch.displayName = parsed.data.displayName.trim();
   if (parsed.data.bio !== undefined) patch.bio = parsed.data.bio;
   if (parsed.data.bioPhotoUrl !== undefined)
     patch.bioPhotoUrl = parsed.data.bioPhotoUrl || null;
@@ -73,6 +77,7 @@ export async function POST(req: NextRequest) {
     .insert(schema.siteSettings)
     .values({
       id: "main",
+      displayName: parsed.data.displayName?.trim() ?? "",
       bio: parsed.data.bio ?? "",
       bioPhotoUrl: parsed.data.bioPhotoUrl || null,
       showListenerChart: parsed.data.showListenerChart ?? false,

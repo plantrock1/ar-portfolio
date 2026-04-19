@@ -47,6 +47,7 @@ export default async function ArtistPage({
     getArtistTotalStreams(artist.id),
     getSiteSettings(),
   ]);
+  const displayName = settings.displayName;
 
   const latest = history[history.length - 1] ?? null;
 
@@ -57,7 +58,7 @@ export default async function ArtistPage({
 
   return (
     <>
-      <SiteHeader />
+      <SiteHeader displayName={displayName} />
       <main className="mx-auto w-full max-w-6xl px-6 pb-24">
         <div className="pt-10 pb-6">
           <Link
@@ -216,7 +217,7 @@ export default async function ArtistPage({
           </div>
         ) : null}
       </main>
-      <SiteFooter />
+      <SiteFooter displayName={displayName} />
     </>
   );
 }

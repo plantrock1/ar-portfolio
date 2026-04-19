@@ -320,6 +320,7 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
 }
 
 export async function getSiteSettings(): Promise<{
+  displayName: string;
   bio: string;
   bioPhotoUrl: string | null;
   socials: import("@/lib/db/schema").ArtistSocials;
@@ -330,8 +331,15 @@ export async function getSiteSettings(): Promise<{
     .from(schema.siteSettings)
     .where(eq(schema.siteSettings.id, "main"));
   if (rows.length === 0)
-    return { bio: "", bioPhotoUrl: null, socials: {}, showListenerChart: false };
+    return {
+      displayName: "",
+      bio: "",
+      bioPhotoUrl: null,
+      socials: {},
+      showListenerChart: false,
+    };
   return {
+    displayName: rows[0].displayName ?? "",
     bio: rows[0].bio,
     bioPhotoUrl: rows[0].bioPhotoUrl ?? null,
     socials: rows[0].socials ?? {},

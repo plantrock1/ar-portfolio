@@ -32,9 +32,11 @@ export default async function Home({
     getFeaturedItems("press"),
   ]);
 
+  const displayName = settings.displayName?.trim() || "A&R Portfolio";
+
   return (
     <>
-      <SiteHeader />
+      <SiteHeader displayName={settings.displayName} />
       <main className="mx-auto w-full max-w-6xl px-6 pb-20">
         <section className="pt-12 pb-12 md:pt-20 md:pb-16">
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] md:gap-16 items-start">
@@ -48,12 +50,12 @@ export default async function Home({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={settings.bioPhotoUrl}
-                    alt="Alec Veach"
+                    alt={displayName}
                     className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border border-white/10 shrink-0"
                   />
                 ) : null}
                 <h1 className="display text-4xl sm:text-5xl md:text-6xl leading-[0.95] text-white">
-                  Alec Veach
+                  {displayName}
                 </h1>
               </div>
               {settings.bio ? (
@@ -194,7 +196,7 @@ export default async function Home({
         ) : null}
 
       </main>
-      <SiteFooter />
+      <SiteFooter displayName={settings.displayName} />
     </>
   );
 }

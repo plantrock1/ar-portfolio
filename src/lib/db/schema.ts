@@ -130,6 +130,7 @@ export const refreshRuns = pgTable("refresh_runs", {
 
 export const siteSettings = pgTable("site_settings", {
   id: text("id").primaryKey(),
+  displayName: text("display_name").notNull().default(""),
   bio: text("bio").notNull().default(""),
   bioPhotoUrl: text("bio_photo_url"),
   socials: jsonb("socials").$type<ArtistSocials>().notNull().default({}),

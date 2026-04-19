@@ -33,6 +33,7 @@ export default async function AdminPage() {
       <SiteHeader />
       <AdminDashboard
         initialArtists={artists}
+        initialDisplayName={settings.displayName}
         initialBio={settings.bio}
         initialBioPhotoUrl={settings.bioPhotoUrl}
         initialSocials={settings.socials}

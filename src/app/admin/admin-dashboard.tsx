@@ -34,6 +34,7 @@ type RefreshRun = {
 
 export function AdminDashboard({
   initialArtists,
+  initialDisplayName,
   initialBio,
   initialBioPhotoUrl,
   initialSocials,
@@ -43,6 +44,7 @@ export function AdminDashboard({
   session,
 }: {
   initialArtists: Artist[];
+  initialDisplayName: string;
   initialBio: string;
   initialBioPhotoUrl: string | null;
   initialSocials: ArtistSocials;
@@ -60,6 +62,8 @@ export function AdminDashboard({
   const [artists, setArtists] = useState(initialArtists);
   const [spotifyUrl, setSpotifyUrl] = useState("");
   const [role, setRole] = useState("");
+  const [displayName, setDisplayName] = useState(initialDisplayName);
+  const [savedDisplayName, setSavedDisplayName] = useState(initialDisplayName);
   const [bio, setBio] = useState(initialBio);
   const [savedBio, setSavedBio] = useState(initialBio);
   const [bioPhotoUrl, setBioPhotoUrl] = useState<string | null>(
@@ -289,6 +293,7 @@ export function AdminDashboard({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        displayName,
         bio,
         socials,
         bioPhotoUrl: bioPhotoUrl ?? "",
@@ -299,10 +304,11 @@ export function AdminDashboard({
       setError(data.error ?? "Failed to save bio");
       return;
     }
+    setSavedDisplayName(displayName);
     setSavedBio(bio);
     setSavedSocials(socials);
     setSavedBioPhotoUrl(bioPhotoUrl);
-    setMessage("Bio saved.");
+    setMessage("Saved.");
     startSavingBio(() => router.refresh());
   }
 
@@ -426,10 +432,21 @@ export function AdminDashboard({
 
       <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
         <div className="flex items-baseline justify-between mb-4">
-          <h2 className="display text-xl text-white">Bio & socials</h2>
+          <h2 className="display text-xl text-white">Your profile</h2>
           <span className="text-xs text-white/40">
-            Appears under your name on the home page
+            Shown on the home page and in the browser tab
           </span>
+        </div>
+        <div className="mb-4">
+          <label className="text-[10px] uppercase tracking-widest text-white/40">
+            Display name
+          </label>
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="e.g., Alec Veach"
+            className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+          />
         </div>
         <div className="flex gap-4 items-start">
           <div className="flex flex-col items-center gap-2 shrink-0">
@@ -512,6 +529,7 @@ export function AdminDashboard({
         </div>
         {(() => {
           const dirty =
+            displayName !== savedDisplayName ||
             bio !== savedBio ||
             bioPhotoUrl !== savedBioPhotoUrl ||
             JSON.stringify(socials) !== JSON.stringify(savedSocials);
