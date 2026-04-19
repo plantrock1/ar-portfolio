@@ -30,19 +30,23 @@ for (const key of REQUIRED) {
   }
 }
 
-// Dynamic import so env is loaded before schema/db modules initialize
-const { runDeepRefresh } = await import("../src/lib/refresh");
+async function main() {
+  // Dynamic import so env is loaded before schema/db modules initialize.
+  const { runDeepRefresh } = await import("../src/lib/refresh");
 
-console.log("▶ Starting deep refresh…");
-const startedAt = Date.now();
+  console.log("▶ Starting deep refresh…");
+  const startedAt = Date.now();
 
-try {
-  const report = await runDeepRefresh();
-  const durationMin = ((Date.now() - startedAt) / 60_000).toFixed(1);
-  console.log(`\n✓ Deep refresh complete in ${durationMin} min`);
-  console.log(JSON.stringify(report, null, 2));
-  process.exit(0);
-} catch (e) {
-  console.error("\n✗ Deep refresh failed:", e);
-  process.exit(1);
+  try {
+    const report = await runDeepRefresh();
+    const durationMin = ((Date.now() - startedAt) / 60_000).toFixed(1);
+    console.log(`\n✓ Deep refresh complete in ${durationMin} min`);
+    console.log(JSON.stringify(report, null, 2));
+    process.exit(0);
+  } catch (e) {
+    console.error("\n✗ Deep refresh failed:", e);
+    process.exit(1);
+  }
 }
+
+main();
