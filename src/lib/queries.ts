@@ -169,18 +169,16 @@ export async function getAggregate(): Promise<AggregateTotals> {
       ORDER BY s.artist_id, s.captured_at DESC
     ),
     latest_track AS (
-      -- Latest snapshot PER track row. A collab between two roster artists has
-      -- two rows (one per artist) and contributes to each artist's total, so
-      -- summing these = sum of per-artist totals.
-      SELECT DISTINCT ON (ts.track_id)
+      -- Dedupe by spotify_id: a collab between two roster artists only
+      -- contributes its streams once to the combined total.
+      SELECT DISTINCT ON (tr.spotify_id)
         tr.spotify_id,
-        tr.artist_id,
         ts.streams
       FROM track_snapshots ts
       JOIN tracks tr ON tr.id = ts.track_id
       JOIN artists a ON a.id = tr.artist_id
       WHERE a.hidden = false AND tr.hidden = false AND ts.streams IS NOT NULL
-      ORDER BY ts.track_id, ts.captured_at DESC
+      ORDER BY tr.spotify_id, ts.captured_at DESC
     )
     SELECT
       (SELECT COUNT(*)::text FROM latest_artist) AS artist_count,
