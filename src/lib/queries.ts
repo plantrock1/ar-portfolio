@@ -221,6 +221,9 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
     artist_slug: string;
   }>(sql`
     WITH latest_track AS (
+      -- Dedupe by spotify_id. When multiple roster artists have the same
+      -- track, prefer the PRIMARY artist's row so the attribution is
+      -- correct (e.g., "bada bing" is primarily diamond*, featuring Tezzus).
       SELECT DISTINCT ON (tr.spotify_id)
         tr.spotify_id,
         tr.name,
@@ -233,7 +236,7 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
       WHERE a.hidden = false
         AND tr.hidden = false
         AND ts.streams IS NOT NULL
-      ORDER BY tr.spotify_id, ts.captured_at DESC
+      ORDER BY tr.spotify_id, tr.is_primary DESC, ts.captured_at DESC
     )
     SELECT
       lt.spotify_id,

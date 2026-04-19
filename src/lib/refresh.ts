@@ -245,41 +245,43 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
 
         // Scrape albums sequentially per-artist but with concurrent workers inside
         if (albumIds.length > 0) {
+          // Serial — Spotify returns "too many tabs" when multiple pages share
+          // one session cookie, which makes parallel album scrapes silently
+          // drop every track's stream count.
           let albumsDoneForThis = 0;
-          const queue = [...albumIds];
-          const concurrency = 4;
-          await Promise.all(
-            Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
-              while (queue.length) {
-                const aid = queue.shift();
-                if (!aid) return;
-                const [album] = await scrapeAlbumsAuthed([aid], {
-                  spDc: session.spDc!,
-                  browser,
-                  filterArtistSpotifyId: row.spotifyId,
-                });
-                if (album) {
-                  for (const t of album.tracks) {
-                    const existing = byTrack.get(t.spotifyId);
-                    if (!existing) {
-                      byTrack.set(t.spotifyId, t);
-                    } else if ((t.streams ?? 0) > (existing.streams ?? 0)) {
-                      byTrack.set(t.spotifyId, {
-                        ...existing,
-                        streams: t.streams,
-                      });
-                    }
-                  }
+          for (const aid of albumIds) {
+            const [album] = await scrapeAlbumsAuthed([aid], {
+              spDc: session.spDc!,
+              browser,
+              filterArtistSpotifyId: row.spotifyId,
+            });
+            if (album) {
+              for (const t of album.tracks) {
+                const existing = byTrack.get(t.spotifyId);
+                if (!existing) {
+                  byTrack.set(t.spotifyId, t);
+                } else {
+                  byTrack.set(t.spotifyId, {
+                    ...existing,
+                    // Prefer whichever row has streams; keep primary flag sticky.
+                    streams:
+                      (t.streams ?? 0) > (existing.streams ?? 0)
+                        ? t.streams
+                        : existing.streams,
+                    isPrimary: existing.isPrimary || t.isPrimary,
+                  });
                 }
-                albumsDoneForThis += 1;
-                albumsScraped += 1;
-                await updateRun({
-                  albumsScraped,
-                  message: `${row.name}: ${albumsDoneForThis}/${albumIds.length} albums`,
-                });
               }
-            }),
-          );
+            }
+            albumsDoneForThis += 1;
+            albumsScraped += 1;
+            await updateRun({
+              albumsScraped,
+              message: `${row.name}: ${albumsDoneForThis}/${albumIds.length} albums`,
+            });
+            // small jitter between requests to stay under rate limits
+            await new Promise((r) => setTimeout(r, 300));
+          }
         }
 
         // Persist every track for this artist
@@ -324,6 +326,7 @@ async function upsertTrack(
     name: string;
     streams: number | null;
     albumImageUrl: string | null;
+    isPrimary?: boolean;
   },
 ) {
   const existing = await db
@@ -339,6 +342,9 @@ async function upsertTrack(
       .set({
         name: t.name,
         albumImageUrl: t.albumImageUrl ?? forArtist.albumImageUrl ?? null,
+        // Keep a previously set primary flag if we don't know this time
+        isPrimary:
+          t.isPrimary === undefined ? forArtist.isPrimary : t.isPrimary,
       })
       .where(eq(schema.tracks.id, forArtist.id));
     trackId = forArtist.id;
@@ -350,6 +356,7 @@ async function upsertTrack(
         artistId,
         name: t.name,
         albumImageUrl: t.albumImageUrl ?? null,
+        isPrimary: t.isPrimary ?? false,
       })
       .returning();
     trackId = inserted.id;

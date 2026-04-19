@@ -51,6 +51,7 @@ export const tracks = pgTable(
     explicit: boolean("explicit").notNull().default(false),
     pinned: boolean("pinned").notNull().default(false),
     hidden: boolean("hidden").notNull().default(false),
+    isPrimary: boolean("is_primary").notNull().default(false),
     addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

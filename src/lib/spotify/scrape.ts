@@ -139,6 +139,8 @@ export type ScrapedTrack = {
   name: string;
   streams: number | null;
   albumImageUrl: string | null;
+  /** true when the target artist is the first-credited (primary) on this track */
+  isPrimary?: boolean;
 };
 
 export type ScrapedArtistPage = {
@@ -290,6 +292,7 @@ async function scrapeArtistPage(
         name: string;
         streams: string | null;
         albumImageUrl: string | null;
+        primaryArtistId: string | null;
       }[] = [];
       for (const row of rows) {
         const anchor = row.querySelector(
@@ -306,11 +309,17 @@ async function scrapeArtistPage(
         const withoutName = name ? rowText.split(name).join(" ") : rowText;
         const streamsText = biggestNumber(withoutName);
         const img = row.querySelector("img") as HTMLImageElement | null;
+        const firstArtist = row.querySelector(
+          'a[href*="/artist/"]',
+        ) as HTMLAnchorElement | null;
+        const primaryArtistId =
+          firstArtist?.href.match(/\/artist\/([a-zA-Z0-9]{22})/)?.[1] ?? null;
         tracks.push({
           spotifyId: id,
           name,
           streams: streamsText,
           albumImageUrl: img?.src ?? null,
+          primaryArtistId,
         });
         seen.add(id);
         if (tracks.length >= 10) break;
@@ -342,6 +351,7 @@ async function scrapeArtistPage(
         name: t.name,
         streams: parseCount(t.streams),
         albumImageUrl: t.albumImageUrl,
+        isPrimary: t.primaryArtistId ? t.primaryArtistId === spotifyId : undefined,
       })),
       albumIds: data.albumIds,
     };
@@ -456,6 +466,7 @@ async function scrapeAlbumPage(
         name: string;
         streams: string | null;
         albumImageUrl: string | null;
+        isPrimary?: boolean;
       }[] = [];
       for (const row of rows) {
         const trackAnchor = row.querySelector(
@@ -469,16 +480,18 @@ async function scrapeAlbumPage(
         const name = (trackAnchor.textContent ?? "").trim();
         if (!name) continue;
 
-        // Filter by artist Spotify ID — exact match on /artist/{id} anchor.
-        if (filterArtistId) {
-          const artistAnchors = Array.from(
-            row.querySelectorAll('a[href*="/artist/"]'),
-          ) as HTMLAnchorElement[];
-          const credited = artistAnchors.some((a) =>
-            a.href.includes(`/artist/${filterArtistId}`),
-          );
-          if (!credited) continue;
-        }
+        // Identify the first /artist/{id} anchor inside the row — that's the
+        // primary. Also filter by credit if a target artist was specified.
+        const artistAnchors = Array.from(
+          row.querySelectorAll('a[href*="/artist/"]'),
+        ) as HTMLAnchorElement[];
+        const artistIds = artistAnchors
+          .map((a) => a.href.match(/\/artist\/([a-zA-Z0-9]{22})/)?.[1])
+          .filter((v): v is string => !!v);
+        if (filterArtistId && !artistIds.includes(filterArtistId)) continue;
+        const isPrimary = filterArtistId
+          ? artistIds[0] === filterArtistId
+          : undefined;
 
         const rowText = row.innerText ?? "";
         const withoutName = name ? rowText.split(name).join(" ") : rowText;
@@ -488,6 +501,7 @@ async function scrapeAlbumPage(
           name,
           streams: streamsText,
           albumImageUrl: coverUrl,
+          isPrimary,
         });
         seen.add(id);
       }
