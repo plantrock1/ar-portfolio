@@ -20,15 +20,13 @@ export default async function AdminPage() {
     );
   }
 
-  const [artists, settings, aggregate, session, press, media] =
-    await Promise.all([
-      db.select().from(schema.artists).orderBy(desc(schema.artists.addedAt)),
-      getSiteSettings(),
-      getAggregate(),
-      getSpotifySession(),
-      getFeaturedItems("press"),
-      getFeaturedItems("media"),
-    ]);
+  const [artists, settings, aggregate, session, press] = await Promise.all([
+    db.select().from(schema.artists).orderBy(desc(schema.artists.addedAt)),
+    getSiteSettings(),
+    getAggregate(),
+    getSpotifySession(),
+    getFeaturedItems("press"),
+  ]);
 
   return (
     <>
@@ -38,10 +36,6 @@ export default async function AdminPage() {
         initialBio={settings.bio}
         initialShowListenerChart={settings.showListenerChart}
         initialPress={press.map((p) => ({
-          ...p,
-          addedAt: new Date(p.addedAt).toISOString(),
-        }))}
-        initialMedia={media.map((p) => ({
           ...p,
           addedAt: new Date(p.addedAt).toISOString(),
         }))}

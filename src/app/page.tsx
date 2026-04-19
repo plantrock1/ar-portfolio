@@ -14,29 +14,28 @@ import { formatFullNumber } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [roster, totals, topTracks, settings, press, media] = await Promise.all([
+  const [roster, totals, topTracks, settings, press] = await Promise.all([
     getRoster(),
     getAggregate(),
     getTopTracksOverall(5),
     getSiteSettings(),
     getFeaturedItems("press"),
-    getFeaturedItems("media"),
   ]);
 
   return (
     <>
       <SiteHeader />
       <main className="mx-auto w-full max-w-6xl px-6 pb-20">
-        <section className="pt-20 pb-16 md:pt-32 md:pb-24">
-          <div className="flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-white/40 mb-8">
-            <span className="inline-block w-8 h-px bg-white/30" />
+        <section className="pt-12 pb-10 md:pt-20 md:pb-14">
+          <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-white/40 mb-4">
+            <span className="inline-block w-6 h-px bg-white/30" />
             A&R Portfolio
           </div>
-          <h1 className="display text-5xl sm:text-6xl md:text-7xl lg:text-8xl leading-[0.95] text-white">
+          <h1 className="display text-4xl sm:text-5xl md:text-6xl leading-[0.95] text-white">
             Alec Veach
           </h1>
           {settings.bio ? (
-            <p className="mt-8 max-w-2xl text-lg md:text-xl text-white/60 leading-relaxed whitespace-pre-wrap">
+            <p className="mt-5 max-w-2xl text-base md:text-lg text-white/60 leading-relaxed whitespace-pre-wrap">
               {settings.bio}
             </p>
           ) : null}
@@ -68,7 +67,21 @@ export default async function Home() {
           </div>
         </section>
 
-        <div className="divider" />
+        {press.length > 0 ? (
+          <>
+            <div className="divider" />
+            <section className="pt-14 md:pt-20">
+              <div className="flex items-baseline justify-between mb-10">
+                <h2 className="display text-3xl md:text-4xl text-white">
+                  Featured press
+                </h2>
+              </div>
+              <FeaturedGrid items={press} />
+            </section>
+          </>
+        ) : null}
+
+        <div className="divider mt-20" />
 
         <section className="pt-14 md:pt-20">
           <div className="flex items-baseline justify-between mb-10">
@@ -132,33 +145,6 @@ export default async function Home() {
           </>
         ) : null}
 
-        {press.length > 0 ? (
-          <>
-            <div className="divider mt-20" />
-            <section className="pt-14 md:pt-20">
-              <div className="flex items-baseline justify-between mb-10">
-                <h2 className="display text-3xl md:text-4xl text-white">
-                  Featured press
-                </h2>
-              </div>
-              <FeaturedGrid items={press} />
-            </section>
-          </>
-        ) : null}
-
-        {media.length > 0 ? (
-          <>
-            <div className="divider mt-20" />
-            <section className="pt-14 md:pt-20">
-              <div className="flex items-baseline justify-between mb-10">
-                <h2 className="display text-3xl md:text-4xl text-white">
-                  Featured media
-                </h2>
-              </div>
-              <FeaturedGrid items={media} />
-            </section>
-          </>
-        ) : null}
       </main>
       <SiteFooter />
     </>

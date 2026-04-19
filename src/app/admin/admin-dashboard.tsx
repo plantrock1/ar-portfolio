@@ -37,7 +37,6 @@ export function AdminDashboard({
   initialBio,
   initialShowListenerChart,
   initialPress,
-  initialMedia,
   lastRefreshedAt,
   session,
 }: {
@@ -45,7 +44,6 @@ export function AdminDashboard({
   initialBio: string;
   initialShowListenerChart: boolean;
   initialPress: FeaturedItem[];
-  initialMedia: FeaturedItem[];
   lastRefreshedAt: string | null;
   session: {
     hasCookie: boolean;
@@ -62,7 +60,6 @@ export function AdminDashboard({
   const [savedBio, setSavedBio] = useState(initialBio);
   const [showChart, setShowChart] = useState(initialShowListenerChart);
   const [press, setPress] = useState(initialPress);
-  const [media, setMedia] = useState(initialMedia);
   const [spDc, setSpDc] = useState("");
   const [sessionState, setSessionState] = useState(session);
   const [message, setMessage] = useState<string | null>(null);
@@ -327,35 +324,35 @@ export function AdminDashboard({
     return true;
   }
 
-  async function addFeatured(
-    kind: "press" | "media",
-    body: { title: string; url: string; imageUrl?: string; source?: string },
-  ) {
+  async function addFeatured(body: {
+    title: string;
+    url: string;
+    imageUrl?: string;
+    source?: string;
+  }) {
     const res = await fetch("/api/admin/featured", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, ...body }),
+      body: JSON.stringify(body),
     });
     const data = await parseResponse(res);
     if (!res.ok) {
       setError(data.error ?? "Failed to add");
       return false;
     }
-    const setter = kind === "press" ? setPress : setMedia;
-    setter((xs) => [...xs, data.item]);
+    setPress((xs) => [...xs, data.item]);
     router.refresh();
     return true;
   }
 
-  async function removeFeatured(kind: "press" | "media", id: string) {
+  async function removeFeatured(id: string) {
     if (!confirm("Remove this item?")) return;
     await fetch("/api/admin/featured", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    const setter = kind === "press" ? setPress : setMedia;
-    setter((xs) => xs.filter((x) => x.id !== id));
+    setPress((xs) => xs.filter((x) => x.id !== id));
     router.refresh();
   }
 
@@ -427,19 +424,7 @@ export function AdminDashboard({
       </section>
 
       <FeaturedSection
-        kind="press"
-        title="Featured press"
-        subtitle="Articles, interviews, playlists. Shown on the home page."
         items={press}
-        onAdd={addFeatured}
-        onRemove={removeFeatured}
-      />
-
-      <FeaturedSection
-        kind="media"
-        title="Featured media"
-        subtitle="YouTube links auto-fetch thumbnails. Shown on the home page."
-        items={media}
         onAdd={addFeatured}
         onRemove={removeFeatured}
       />
@@ -740,34 +725,54 @@ function ArtistRow({
   );
 }
 
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB
+
 function FeaturedSection({
-  kind,
-  title,
-  subtitle,
   items,
   onAdd,
   onRemove,
 }: {
-  kind: "press" | "media";
-  title: string;
-  subtitle: string;
   items: FeaturedItem[];
-  onAdd: (
-    kind: "press" | "media",
-    body: { title: string; url: string; imageUrl?: string; source?: string },
-  ) => Promise<boolean>;
-  onRemove: (kind: "press" | "media", id: string) => void;
+  onAdd: (body: {
+    title: string;
+    url: string;
+    imageUrl?: string;
+    source?: string;
+  }) => Promise<boolean>;
+  onRemove: (id: string) => void;
 }) {
   const [t, setT] = useState("");
   const [u, setU] = useState("");
-  const [img, setImg] = useState("");
+  const [img, setImg] = useState(""); // data: URL or http URL
+  const [imgName, setImgName] = useState<string | null>(null);
+  const [imgError, setImgError] = useState<string | null>(null);
   const [src, setSrc] = useState("");
   const [adding, setAdding] = useState(false);
+
+  async function onPickFile(file: File) {
+    setImgError(null);
+    if (!file.type.startsWith("image/")) {
+      setImgError("Not an image file");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImgError("Image is over 4MB — try a smaller file");
+      return;
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(file);
+    });
+    setImg(dataUrl);
+    setImgName(file.name);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setAdding(true);
-    const ok = await onAdd(kind, {
+    const ok = await onAdd({
       title: t,
       url: u,
       imageUrl: img || undefined,
@@ -778,6 +783,7 @@ function FeaturedSection({
       setT("");
       setU("");
       setImg("");
+      setImgName(null);
       setSrc("");
     }
   }
@@ -785,14 +791,17 @@ function FeaturedSection({
   return (
     <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
       <div className="flex items-baseline justify-between mb-2">
-        <h2 className="display text-xl text-white">{title}</h2>
+        <h2 className="display text-xl text-white">Featured press</h2>
         <span className="text-xs text-white/40">
           {items.length} {items.length === 1 ? "item" : "items"}
         </span>
       </div>
-      <p className="text-xs text-white/50 mb-4">{subtitle}</p>
+      <p className="text-xs text-white/50 mb-4">
+        Articles, videos, interviews. YouTube links auto-fetch thumbnails.
+        Hidden from the home page when empty.
+      </p>
 
-      <form onSubmit={submit} className="grid md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 mb-4">
+      <form onSubmit={submit} className="grid md:grid-cols-[1fr_1fr_auto] gap-2 mb-2">
         <input
           value={t}
           onChange={(e) => setT(e.target.value)}
@@ -803,24 +812,8 @@ function FeaturedSection({
         <input
           value={u}
           onChange={(e) => setU(e.target.value)}
-          placeholder="Link URL"
+          placeholder="Link URL (article or video)"
           required
-          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
-        />
-        <input
-          value={img}
-          onChange={(e) => setImg(e.target.value)}
-          placeholder={
-            kind === "media"
-              ? "Image URL (optional; YouTube auto)"
-              : "Image URL"
-          }
-          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
-        />
-        <input
-          value={src}
-          onChange={(e) => setSrc(e.target.value)}
-          placeholder="Source (optional)"
           className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
         />
         <button
@@ -830,27 +823,77 @@ function FeaturedSection({
         >
           {adding ? "Adding…" : "Add"}
         </button>
+        <input
+          value={src}
+          onChange={(e) => setSrc(e.target.value)}
+          placeholder="Source (optional, e.g., Rolling Stone)"
+          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 md:col-span-3"
+        />
+        <div className="md:col-span-3 flex flex-wrap items-center gap-3 pt-1">
+          <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-white/60 hover:text-white">
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onPickFile(f);
+              }}
+            />
+            <span className="rounded-lg border border-white/15 bg-white/5 px-3 py-2">
+              Upload image
+            </span>
+          </label>
+          <span className="text-xs text-white/40">or</span>
+          <input
+            value={img.startsWith("data:") ? "" : img}
+            onChange={(e) => {
+              setImg(e.target.value);
+              setImgName(null);
+            }}
+            placeholder="Paste image URL"
+            className="flex-1 min-w-[200px] rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+          />
+          {img ? (
+            <div className="flex items-center gap-2 text-xs text-white/60">
+              <span className="text-green-400">
+                ✓ {imgName ?? "image attached"}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setImg("");
+                  setImgName(null);
+                }}
+                className="text-white/40 hover:text-red-400"
+              >
+                clear
+              </button>
+            </div>
+          ) : null}
+          {imgError ? (
+            <span className="text-xs text-red-400">{imgError}</span>
+          ) : null}
+        </div>
       </form>
 
       {items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/10 p-6 text-center text-white/40 text-sm">
-          Nothing here yet.
+        <div className="mt-4 rounded-xl border border-dashed border-white/10 p-6 text-center text-white/40 text-sm">
+          Nothing here yet. Add a link and it'll appear on your home page.
         </div>
       ) : (
-        <ul className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
+        <ul className="mt-4 divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
           {items.map((item) => (
             <li
               key={item.id}
               className="flex items-center gap-4 px-3 py-2 hover:bg-white/[0.02]"
             >
               {item.imageUrl ? (
-                <Image
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
                   src={item.imageUrl}
                   alt={item.title}
-                  width={64}
-                  height={40}
                   className="rounded object-cover w-16 h-10"
-                  unoptimized
                 />
               ) : (
                 <div className="w-16 h-10 rounded bg-neutral-800" />
@@ -871,7 +914,7 @@ function FeaturedSection({
                 Open
               </a>
               <button
-                onClick={() => onRemove(kind, item.id)}
+                onClick={() => onRemove(item.id)}
                 className="text-xs text-red-400/70 hover:text-red-400 px-2"
               >
                 Remove

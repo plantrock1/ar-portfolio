@@ -6,13 +6,27 @@ import { asc, eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
 
-const Kind = z.enum(["press", "media"]);
+const Kind = z.enum(["press", "media"]).optional();
+
+// imageUrl accepts either a real URL or a data: URL (uploaded file).
+// Max 5MB base64 payload so an oversize image doesn't silently bloat the DB.
+const DataUrlOrHttp = z
+  .string()
+  .trim()
+  .max(5_500_000)
+  .refine(
+    (s) =>
+      s === "" ||
+      /^https?:\/\//i.test(s) ||
+      /^data:image\/[a-zA-Z0-9+.-]+;base64,/.test(s),
+    { message: "imageUrl must be a URL or an image data: URL" },
+  );
 
 const CreateBody = z.object({
   kind: Kind,
   title: z.string().trim().min(1).max(200),
   url: z.string().trim().url().max(600),
-  imageUrl: z.string().trim().url().max(600).optional().or(z.literal("")),
+  imageUrl: DataUrlOrHttp.optional(),
   source: z.string().trim().max(80).optional().or(z.literal("")),
 });
 
@@ -38,12 +52,14 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { kind, title, url, imageUrl, source } = parsed.data;
-  const imageResolved = imageUrl?.trim() || (await resolveImage(url, kind));
+  const { title, url, imageUrl, source } = parsed.data;
+  // Single category now ("press"); YouTube thumbnail auto-fetch still applies
+  // whenever imageUrl is missing so video links don't need manual images.
+  const imageResolved = imageUrl?.trim() || (await resolveImage(url));
   const [inserted] = await db
     .insert(schema.featuredItems)
     .values({
-      kind,
+      kind: "press",
       title,
       url,
       imageUrl: imageResolved || null,
@@ -69,9 +85,8 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-// Auto-derive a thumbnail for YouTube links when the user didn't provide one.
-async function resolveImage(url: string, kind: "press" | "media"): Promise<string | null> {
-  if (kind !== "media") return null;
+// Auto-derive a thumbnail for YouTube links when no image is provided.
+async function resolveImage(url: string): Promise<string | null> {
   const ytId = extractYoutubeId(url);
   if (ytId) return `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
   return null;
