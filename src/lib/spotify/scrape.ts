@@ -343,6 +343,22 @@ async function scrapeArtistPage(
       };
     });
 
+    // Diagnostic: if we didn't find the monthly listeners string, log what
+    // the page actually showed so we can tell if it's an interstitial, a
+    // geo-check, a challenge page, etc.
+    if (!data.monthlyListenersText) {
+      const diag = await page.evaluate(() => ({
+        url: location.href,
+        title: document.title,
+        snippet: (document.body.innerText ?? "")
+          .slice(0, 600)
+          .replace(/\n/g, " | "),
+      }));
+      console.warn(
+        `[scrape] no monthly listeners for ${spotifyId} — title="${diag.title}" url="${diag.url}"\n  body: ${diag.snippet}`,
+      );
+    }
+
     return {
       spotifyId,
       monthlyListeners: parseCount(data.monthlyListenersText),
