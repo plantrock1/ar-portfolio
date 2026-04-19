@@ -147,6 +147,35 @@ export async function getTrack(id: string): Promise<SpotifyTrack> {
   return spotify<SpotifyTrack>(`/tracks/${id}`);
 }
 
+export type TrackIsrc = { id: string; isrc: string | null };
+
+/**
+ * Fetch ISRC for a batch of track IDs. Batch endpoint /tracks?ids= is
+ * restricted for our stripped app, so we parallelize single-track calls.
+ */
+export async function getTrackIsrcs(ids: string[]): Promise<TrackIsrc[]> {
+  if (ids.length === 0) return [];
+  const out: TrackIsrc[] = [];
+  const concurrency = 8;
+  for (let i = 0; i < ids.length; i += concurrency) {
+    const chunk = ids.slice(i, i + concurrency);
+    const results = await Promise.allSettled(
+      chunk.map((id) =>
+        spotify<{ external_ids?: { isrc?: string } }>(`/tracks/${id}`),
+      ),
+    );
+    for (let j = 0; j < results.length; j += 1) {
+      const r = results[j];
+      if (r.status === "fulfilled") {
+        out.push({ id: chunk[j], isrc: r.value.external_ids?.isrc ?? null });
+      } else {
+        out.push({ id: chunk[j], isrc: null });
+      }
+    }
+  }
+  return out;
+}
+
 export async function getTracks(ids: string[]): Promise<SpotifyTrack[]> {
   if (ids.length === 0) return [];
   const out: SpotifyTrack[] = [];

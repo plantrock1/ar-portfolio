@@ -46,6 +46,7 @@ export const tracks = pgTable(
       .notNull()
       .references(() => artists.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    isrc: text("isrc"),
     albumName: text("album_name"),
     albumImageUrl: text("album_image_url"),
     releaseDate: text("release_date"),

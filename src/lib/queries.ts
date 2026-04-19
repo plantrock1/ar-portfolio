@@ -139,24 +139,48 @@ export async function getArtistTracks(artistId: string) {
 }
 
 export async function getArtistTopTracks(artistId: string, limit = 5) {
+  // Dedupe by ISRC so a re-released single+album version shows once.
   const all = await getArtistTracks(artistId);
-  return all.slice(0, limit);
+  const byRecording = new Map<string, (typeof all)[number]>();
+  for (const t of all) {
+    const key = t.isrc ?? t.spotifyId;
+    const existing = byRecording.get(key);
+    if (!existing || (t.streams ?? 0) > (existing.streams ?? 0)) {
+      byRecording.set(key, t);
+    }
+  }
+  return Array.from(byRecording.values())
+    .sort((a, b) => (b.streams ?? 0) - (a.streams ?? 0))
+    .slice(0, limit);
 }
 
 export async function getArtistTotalStreams(
   artistId: string,
 ): Promise<number> {
+  // Dedupe by ISRC — re-releases of the same recording (single + album +
+  // deluxe) share an ISRC but have different spotify_ids. We take the MAX
+  // stream count per ISRC (the most-played release represents the song's
+  // real listenership) and sum those. Tracks without an ISRC fall back to
+  // spotify_id so nothing is silently dropped.
   const result = await db.execute<{ total: string | null }>(sql`
     WITH latest_track AS (
       SELECT DISTINCT ON (tr.spotify_id)
         tr.spotify_id,
+        tr.isrc,
         ts.streams
       FROM tracks tr
       JOIN track_snapshots ts ON ts.track_id = tr.id
-      WHERE tr.artist_id = ${artistId} AND tr.hidden = false AND ts.streams IS NOT NULL
+      WHERE tr.artist_id = ${artistId}
+        AND tr.hidden = false
+        AND ts.streams IS NOT NULL
       ORDER BY tr.spotify_id, ts.captured_at DESC
+    ),
+    per_recording AS (
+      SELECT COALESCE(isrc, spotify_id) AS key, MAX(streams) AS streams
+      FROM latest_track
+      GROUP BY COALESCE(isrc, spotify_id)
     )
-    SELECT SUM(streams)::text AS total FROM latest_track
+    SELECT SUM(streams)::text AS total FROM per_recording
   `);
   return result.rows[0]?.total ? Number(result.rows[0].total) : 0;
 }
@@ -189,22 +213,29 @@ export async function getAggregate(): Promise<AggregateTotals> {
       ORDER BY s.artist_id, s.captured_at DESC
     ),
     latest_track AS (
-      -- Dedupe by spotify_id: a collab between two roster artists only
-      -- contributes its streams once to the combined total.
+      -- Dedupe by spotify_id (a roster-internal collab only shows up once)
+      -- and then by ISRC (a single + album release of the same recording
+      -- only contributes once — we take the MAX stream count per recording).
       SELECT DISTINCT ON (tr.spotify_id)
         tr.spotify_id,
+        tr.isrc,
         ts.streams
       FROM track_snapshots ts
       JOIN tracks tr ON tr.id = ts.track_id
       JOIN artists a ON a.id = tr.artist_id
       WHERE a.hidden = false AND tr.hidden = false AND ts.streams IS NOT NULL
       ORDER BY tr.spotify_id, ts.captured_at DESC
+    ),
+    per_recording AS (
+      SELECT COALESCE(isrc, spotify_id) AS key, MAX(streams) AS streams
+      FROM latest_track
+      GROUP BY COALESCE(isrc, spotify_id)
     )
     SELECT
       (SELECT COUNT(*)::text FROM latest_artist) AS artist_count,
       (SELECT SUM(followers)::text FROM latest_artist) AS total_followers,
       (SELECT SUM(monthly_listeners)::text FROM latest_artist) AS total_monthly_listeners,
-      (SELECT SUM(streams)::text FROM latest_track) AS total_streams,
+      (SELECT SUM(streams)::text FROM per_recording) AS total_streams,
       (SELECT MAX(captured_at) FROM latest_artist) AS as_of
   `);
   const row = result.rows[0];

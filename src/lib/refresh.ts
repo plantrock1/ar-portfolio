@@ -7,7 +7,7 @@ import {
   checkSession,
   type ScrapedTrack,
 } from "@/lib/spotify/scrape";
-import { getAllArtistAlbums } from "@/lib/spotify/api";
+import { getAllArtistAlbums, getTrackIsrcs } from "@/lib/spotify/api";
 import {
   getSpotifySession,
   markSessionStatus,
@@ -299,9 +299,30 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
         await updateRun({ tracksUpserted });
       }
 
+      // Phase 3.5: fetch ISRC for every discovered track (API call, fast).
+      // ISRC lets us dedupe re-releases (single + album + deluxe) of the same
+      // recording so "total streams" counts each song once.
+      const uniqueTrackIds = Array.from(new Set(allTrackIds));
+      await updateRun({
+        phase: "isrc",
+        message: `Fetching ISRC codes for ${uniqueTrackIds.length} tracks…`,
+      });
+      try {
+        const isrcs = await getTrackIsrcs(uniqueTrackIds);
+        for (const row of isrcs) {
+          if (row.isrc) {
+            await db
+              .update(schema.tracks)
+              .set({ isrc: row.isrc })
+              .where(eq(schema.tracks.spotifyId, row.id));
+          }
+        }
+      } catch (e) {
+        console.error("[deep] ISRC fetch failed:", e);
+      }
+
       // Phase 4: visit every track's page to get its actual stream count.
       // This is the only authoritative source beyond the top 10.
-      const uniqueTrackIds = Array.from(new Set(allTrackIds));
       await updateRun({
         phase: "tracks",
         albumsScraped: 0,
