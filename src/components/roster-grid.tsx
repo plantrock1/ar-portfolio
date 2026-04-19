@@ -46,8 +46,8 @@ export function RosterGrid({
               scroll={false}
               className={`px-3 py-1 rounded-full transition-colors ${
                 sortBy === "listeners"
-                  ? "bg-white text-black"
-                  : "text-white/50 hover:text-white"
+                  ? "bg-white/10 text-white"
+                  : "text-white/40 hover:text-white/70"
               }`}
             >
               Monthly listeners
@@ -57,8 +57,8 @@ export function RosterGrid({
               scroll={false}
               className={`px-3 py-1 rounded-full transition-colors ${
                 sortBy === "alpha"
-                  ? "bg-white text-black"
-                  : "text-white/50 hover:text-white"
+                  ? "bg-white/10 text-white"
+                  : "text-white/40 hover:text-white/70"
               }`}
             >
               A–Z
@@ -71,8 +71,8 @@ export function RosterGrid({
               onClick={() => toggleCompact(false)}
               className={`px-3 py-1 rounded-full transition-colors ${
                 !compact
-                  ? "bg-white text-black"
-                  : "text-white/50 hover:text-white"
+                  ? "bg-white/10 text-white"
+                  : "text-white/40 hover:text-white/70"
               }`}
               aria-pressed={!compact}
             >
@@ -83,8 +83,8 @@ export function RosterGrid({
               onClick={() => toggleCompact(true)}
               className={`px-3 py-1 rounded-full transition-colors ${
                 compact
-                  ? "bg-white text-black"
-                  : "text-white/50 hover:text-white"
+                  ? "bg-white/10 text-white"
+                  : "text-white/40 hover:text-white/70"
               }`}
               aria-pressed={compact}
             >

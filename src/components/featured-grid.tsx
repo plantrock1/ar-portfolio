@@ -39,8 +39,8 @@ export function FeaturedGrid({ items }: { items: Item[] }) {
             onClick={() => toggleCompact(false)}
             className={`px-3 py-1 rounded-full transition-colors ${
               !compact
-                ? "bg-white text-black"
-                : "text-white/50 hover:text-white"
+                ? "bg-white/10 text-white"
+                : "text-white/40 hover:text-white/70"
             }`}
             aria-pressed={!compact}
           >
@@ -51,8 +51,8 @@ export function FeaturedGrid({ items }: { items: Item[] }) {
             onClick={() => toggleCompact(true)}
             className={`px-3 py-1 rounded-full transition-colors ${
               compact
-                ? "bg-white text-black"
-                : "text-white/50 hover:text-white"
+                ? "bg-white/10 text-white"
+                : "text-white/40 hover:text-white/70"
             }`}
             aria-pressed={compact}
           >
