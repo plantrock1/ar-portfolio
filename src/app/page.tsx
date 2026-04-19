@@ -64,17 +64,6 @@ export default async function Home() {
               }
             />
           </div>
-          {totals.asOf ? (
-            <div className="mt-10 text-xs text-white/30">
-              Last refreshed{" "}
-              {new Date(totals.asOf).toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}
-            </div>
-          ) : null}
         </section>
 
         <div className="divider" />

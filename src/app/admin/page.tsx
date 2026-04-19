@@ -4,7 +4,7 @@ import { AdminDashboard } from "./admin-dashboard";
 import { db, schema } from "@/lib/db";
 import { desc } from "drizzle-orm";
 import { SiteHeader } from "@/components/site-header";
-import { getSiteSettings } from "@/lib/queries";
+import { getSiteSettings, getAggregate } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -19,15 +19,20 @@ export default async function AdminPage() {
     );
   }
 
-  const [artists, settings] = await Promise.all([
+  const [artists, settings, aggregate] = await Promise.all([
     db.select().from(schema.artists).orderBy(desc(schema.artists.addedAt)),
     getSiteSettings(),
+    getAggregate(),
   ]);
 
   return (
     <>
       <SiteHeader />
-      <AdminDashboard initialArtists={artists} initialBio={settings.bio} />
+      <AdminDashboard
+        initialArtists={artists}
+        initialBio={settings.bio}
+        lastRefreshedAt={aggregate.asOf ? aggregate.asOf.toISOString() : null}
+      />
     </>
   );
 }

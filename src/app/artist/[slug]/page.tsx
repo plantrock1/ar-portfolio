@@ -115,11 +115,10 @@ export default async function ArtistPage({
               value={latest?.monthlyListeners ? Number(latest.monthlyListeners) : null}
             />
             <Stat
-              label="Top Track Streams"
+              label="Top 5 track streams"
               value={
                 tracks.reduce((acc, t) => acc + (t.streams ?? 0), 0) || null
               }
-              sub={`Across ${tracks.length} top tracks`}
             />
           </div>
         </section>

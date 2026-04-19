@@ -8,9 +8,11 @@ import type { Artist } from "@/lib/db/schema";
 export function AdminDashboard({
   initialArtists,
   initialBio,
+  lastRefreshedAt,
 }: {
   initialArtists: Artist[];
   initialBio: string;
+  lastRefreshedAt: string | null;
 }) {
   const router = useRouter();
   const [artists, setArtists] = useState(initialArtists);
@@ -121,6 +123,17 @@ export function AdminDashboard({
           <h1 className="display text-4xl text-white">Admin</h1>
           <p className="text-white/50 text-sm mt-1">
             Manage the roster and trigger a refresh.
+          </p>
+          <p className="text-white/40 text-xs mt-2">
+            Last refresh:{" "}
+            {lastRefreshedAt
+              ? new Date(lastRefreshedAt).toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })
+              : "never"}
           </p>
         </div>
         <button
