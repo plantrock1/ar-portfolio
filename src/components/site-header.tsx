@@ -14,14 +14,6 @@ export function SiteHeader() {
           <Link href="/" className="hover:text-white transition-colors">
             Roster
           </Link>
-          <a
-            href="https://open.spotify.com"
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-white transition-colors"
-          >
-            Spotify
-          </a>
         </nav>
       </div>
     </header>

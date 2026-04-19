@@ -7,17 +7,22 @@ import type { Artist } from "@/lib/db/schema";
 
 export function AdminDashboard({
   initialArtists,
+  initialBio,
 }: {
   initialArtists: Artist[];
+  initialBio: string;
 }) {
   const router = useRouter();
   const [artists, setArtists] = useState(initialArtists);
   const [spotifyUrl, setSpotifyUrl] = useState("");
   const [role, setRole] = useState("");
+  const [bio, setBio] = useState(initialBio);
+  const [savedBio, setSavedBio] = useState(initialBio);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isAdding, startAdding] = useTransition();
   const [isRefreshing, startRefresh] = useTransition();
+  const [isSavingBio, startSavingBio] = useTransition();
 
   async function parseResponse(res: Response) {
     const text = await res.text();
@@ -91,6 +96,24 @@ export function AdminDashboard({
     router.refresh();
   }
 
+  async function saveBio() {
+    setError(null);
+    setMessage(null);
+    const res = await fetch("/api/admin/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bio }),
+    });
+    if (!res.ok) {
+      const data = await parseResponse(res);
+      setError(data.error ?? "Failed to save bio");
+      return;
+    }
+    setSavedBio(bio);
+    setMessage("Bio saved.");
+    startSavingBio(() => router.refresh());
+  }
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 pt-12 pb-20">
       <div className="flex items-center justify-between mb-10">
@@ -107,6 +130,34 @@ export function AdminDashboard({
           Sign out
         </button>
       </div>
+
+      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
+        <div className="flex items-baseline justify-between mb-4">
+          <h2 className="display text-xl text-white">Bio</h2>
+          <span className="text-xs text-white/40">
+            Appears under your name on the home page
+          </span>
+        </div>
+        <textarea
+          value={bio}
+          onChange={(e) => setBio(e.target.value)}
+          rows={4}
+          placeholder="A&R working with artists across…"
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 resize-y"
+        />
+        <div className="mt-3 flex items-center justify-end gap-3">
+          <span className="text-xs text-white/40">
+            {bio.length}/2000 chars
+          </span>
+          <button
+            onClick={saveBio}
+            disabled={isSavingBio || bio === savedBio}
+            className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
+          >
+            {isSavingBio ? "Saving…" : bio === savedBio ? "Saved" : "Save bio"}
+          </button>
+        </div>
+      </section>
 
       <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
         <h2 className="display text-xl text-white mb-4">Add artist</h2>

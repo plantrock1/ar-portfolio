@@ -1,5 +1,5 @@
 import { db, schema } from "@/lib/db";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 export type ArtistWithLatest = typeof schema.artists.$inferSelect & {
   latest: {
@@ -174,6 +174,71 @@ export async function getAggregate(): Promise<AggregateTotals> {
     totalStreams: row?.total_streams ? Number(row.total_streams) : null,
     asOf: row?.as_of ?? null,
   };
+}
+
+export type TopTrack = {
+  spotifyId: string;
+  name: string;
+  albumImageUrl: string | null;
+  streams: number;
+  artistName: string;
+  artistSlug: string;
+};
+
+export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
+  const result = await db.execute<{
+    spotify_id: string;
+    name: string;
+    album_image_url: string | null;
+    streams: string;
+    artist_name: string;
+    artist_slug: string;
+  }>(sql`
+    WITH latest_track AS (
+      SELECT DISTINCT ON (tr.spotify_id)
+        tr.spotify_id,
+        tr.name,
+        tr.album_image_url,
+        tr.artist_id,
+        ts.streams
+      FROM tracks tr
+      JOIN track_snapshots ts ON ts.track_id = tr.id
+      JOIN artists a ON a.id = tr.artist_id
+      WHERE a.hidden = false
+        AND tr.hidden = false
+        AND ts.streams IS NOT NULL
+      ORDER BY tr.spotify_id, ts.captured_at DESC
+    )
+    SELECT
+      lt.spotify_id,
+      lt.name,
+      lt.album_image_url,
+      lt.streams::text AS streams,
+      a.name AS artist_name,
+      a.slug AS artist_slug
+    FROM latest_track lt
+    JOIN artists a ON a.id = lt.artist_id
+    WHERE lt.streams IS NOT NULL
+    ORDER BY lt.streams DESC
+    LIMIT ${limit}
+  `);
+  return result.rows.map((r) => ({
+    spotifyId: r.spotify_id,
+    name: r.name,
+    albumImageUrl: r.album_image_url,
+    streams: Number(r.streams),
+    artistName: r.artist_name,
+    artistSlug: r.artist_slug,
+  }));
+}
+
+export async function getSiteSettings(): Promise<{ bio: string }> {
+  const rows = await db
+    .select()
+    .from(schema.siteSettings)
+    .where(eq(schema.siteSettings.id, "main"));
+  if (rows.length === 0) return { bio: "" };
+  return { bio: rows[0].bio };
 }
 
 export async function getAggregateHistory() {

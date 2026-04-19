@@ -69,6 +69,7 @@ export async function runRefresh(): Promise<RefreshReport> {
         if (!t.spotifyId) continue;
         try {
           const existing = existingBySpotify.get(t.spotifyId);
+          let trackId: string;
           if (existing) {
             await db
               .update(schema.tracks)
@@ -77,14 +78,24 @@ export async function runRefresh(): Promise<RefreshReport> {
                 albumImageUrl: t.albumImageUrl ?? existing.albumImageUrl ?? null,
               })
               .where(eq(schema.tracks.id, existing.id));
+            trackId = existing.id;
           } else {
-            await db.insert(schema.tracks).values({
-              spotifyId: t.spotifyId,
-              artistId: row.id,
-              name: t.name,
-              albumImageUrl: t.albumImageUrl ?? null,
-            });
+            const [inserted] = await db
+              .insert(schema.tracks)
+              .values({
+                spotifyId: t.spotifyId,
+                artistId: row.id,
+                name: t.name,
+                albumImageUrl: t.albumImageUrl ?? null,
+              })
+              .returning();
+            trackId = inserted.id;
           }
+          await db.insert(schema.trackSnapshots).values({
+            trackId,
+            streams: t.streams,
+            popularity: null,
+          });
           tracksRefreshed += 1;
         } catch (e) {
           console.error(`[refresh] track insert failed for ${t.spotifyId} (${t.name}):`, e);

@@ -20,6 +20,11 @@ async function localChromePath(): Promise<string | null> {
   return null;
 }
 
+const STEALTH_ARGS = [
+  "--disable-blink-features=AutomationControlled",
+  "--disable-features=IsolateOrigins,site-per-process",
+];
+
 export async function launchBrowser(): Promise<Browser> {
   const useLocal = process.env.USE_LOCAL_CHROME === "1";
   const puppeteer = await import("puppeteer-core");
@@ -34,7 +39,7 @@ export async function launchBrowser(): Promise<Browser> {
     return puppeteer.default.launch({
       executablePath,
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: ["--no-sandbox", "--disable-setuid-sandbox", ...STEALTH_ARGS],
     });
   }
 
@@ -44,16 +49,40 @@ export async function launchBrowser(): Promise<Browser> {
     executablePath: () => Promise<string>;
   };
   return puppeteer.default.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
+    args: [...chromium.args, ...STEALTH_ARGS],
+    defaultViewport: chromium.defaultViewport ?? { width: 1366, height: 800 },
     executablePath: await chromium.executablePath(),
     headless: true,
+  });
+}
+
+async function applyStealth(page: Page) {
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+    Object.defineProperty(navigator, "plugins", {
+      get: () => [1, 2, 3, 4, 5].map(() => ({})),
+    });
+    Object.defineProperty(navigator, "languages", {
+      get: () => ["en-US", "en"],
+    });
+    // @ts-expect-error runtime global
+    window.chrome = { runtime: {} };
+    const origQuery = window.navigator.permissions?.query;
+    if (origQuery) {
+      window.navigator.permissions.query = (p: PermissionDescriptor) =>
+        p.name === "notifications"
+          ? Promise.resolve({
+              state: Notification.permission,
+            } as PermissionStatus)
+          : origQuery.call(window.navigator.permissions, p);
+    }
   });
 }
 
 export type ScrapedTrack = {
   spotifyId: string;
   name: string;
+  streams: number | null;
   albumImageUrl: string | null;
 };
 
@@ -117,58 +146,94 @@ async function scrapeOne(
 ): Promise<ScrapedArtist> {
   const page: Page = await browser.newPage();
   try {
+    await applyStealth(page);
     await page.setUserAgent(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
     );
+    await page.setViewport({ width: 1366, height: 800 });
     await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
     await page.goto(`https://open.spotify.com/artist/${spotifyId}`, {
       waitUntil: "domcontentloaded",
-      timeout: 25_000,
+      timeout: 30_000,
     });
 
-    // Wait for monthly listeners — signal that React has hydrated
-    await page.waitForFunction(
-      () => /[\d,\.]+\s+monthly listeners/i.test(document.body.innerText),
-      { timeout: 15_000 },
-    );
+    // Wait for the tracklist rows to appear — that's when streams hydrate.
+    await page
+      .waitForSelector('[data-testid^="tracklist-row"]', { timeout: 15_000 })
+      .catch(() => null);
 
-    // Anonymous Spotify page renders only monthly listeners + track titles.
-    // Followers and play counts are gated to logged-in users, so we don't
-    // attempt to extract them here.
+    // Dismiss cookie banner if present
+    await page
+      .evaluate(() => {
+        const btns = Array.from(document.querySelectorAll("button"));
+        const accept = btns.find((b) =>
+          /accept|agree|ok/i.test(b.textContent ?? ""),
+        );
+        if (accept) (accept as HTMLButtonElement).click();
+      })
+      .catch(() => {});
+
+    // Small scroll + wait — streams lazy-load after tracklist mount.
+    await page.evaluate(() => window.scrollTo(0, 400)).catch(() => {});
+    await new Promise((r) => setTimeout(r, 2500));
+
     const data = await page.evaluate(() => {
       const body = document.body.innerText;
       const mlMatch = body.match(/([\d,\.]+)\s+monthly listeners/i);
       const monthlyListenersText = mlMatch ? mlMatch[1] : null;
 
-      const trackAnchors = Array.from(
-        document.querySelectorAll('a[href*="/track/"]'),
-      ) as HTMLAnchorElement[];
+      function biggestNumber(text: string): string | null {
+        const cleaned = text.replace(/\d+:\d+/g, " ");
+        const matches = cleaned.match(/\d{1,3}(?:,\d{3})+|\d{5,}/g);
+        if (!matches || matches.length === 0) return null;
+        let best: string | null = null;
+        let bestN = -1;
+        for (const m of matches) {
+          const n = Number(m.replace(/,/g, ""));
+          if (n > bestN) {
+            bestN = n;
+            best = m;
+          }
+        }
+        return best;
+      }
+
+      const rows = Array.from(
+        document.querySelectorAll('[data-testid^="tracklist-row"]'),
+      ) as HTMLElement[];
 
       const seen = new Set<string>();
       const tracks: {
         spotifyId: string;
         name: string;
+        streams: string | null;
         albumImageUrl: string | null;
       }[] = [];
 
-      for (const a of trackAnchors) {
-        const m = a.href.match(/\/track\/([a-zA-Z0-9]{22})/);
+      for (const row of rows) {
+        const anchor = row.querySelector(
+          'a[href*="/track/"]',
+        ) as HTMLAnchorElement | null;
+        if (!anchor) continue;
+        const m = anchor.href.match(/\/track\/([a-zA-Z0-9]{22})/);
         if (!m) continue;
         const id = m[1];
         if (seen.has(id)) continue;
-        const name = (a.textContent ?? "").trim();
+        const name = (anchor.textContent ?? "").trim();
         if (!name) continue;
 
-        // Walk up to find the row element for the album image
-        let row: HTMLElement | null = a;
-        for (let i = 0; i < 8 && row?.parentElement; i++) {
-          row = row.parentElement;
-          const testid = row.getAttribute("data-testid") ?? "";
-          if (testid.startsWith("tracklist-row")) break;
-        }
-        const img = row?.querySelector("img") as HTMLImageElement | null;
+        const rowText = row.innerText ?? "";
+        const withoutName = name ? rowText.split(name).join(" ") : rowText;
+        const streamsText = biggestNumber(withoutName);
 
-        tracks.push({ spotifyId: id, name, albumImageUrl: img?.src ?? null });
+        const img = row.querySelector("img") as HTMLImageElement | null;
+
+        tracks.push({
+          spotifyId: id,
+          name,
+          streams: streamsText,
+          albumImageUrl: img?.src ?? null,
+        });
         seen.add(id);
         if (tracks.length >= 10) break;
       }
@@ -179,7 +244,12 @@ async function scrapeOne(
     return {
       spotifyId,
       monthlyListeners: parseCount(data.monthlyListenersText),
-      tracks: data.tracks,
+      tracks: data.tracks.map((t) => ({
+        spotifyId: t.spotifyId,
+        name: t.name,
+        streams: parseCount(t.streams),
+        albumImageUrl: t.albumImageUrl,
+      })),
     };
   } catch (e) {
     return {

@@ -9,6 +9,7 @@ import {
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { Stat } from "@/components/stat";
 import { GrowthChart } from "@/components/growth-chart";
+import { formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -114,9 +115,11 @@ export default async function ArtistPage({
               value={latest?.monthlyListeners ? Number(latest.monthlyListeners) : null}
             />
             <Stat
-              label="Top Tracks"
-              value={tracks.length || null}
-              sub="Pulled from Spotify"
+              label="Top Track Streams"
+              value={
+                tracks.reduce((acc, t) => acc + (t.streams ?? 0), 0) || null
+              }
+              sub={`Across ${tracks.length} top tracks`}
             />
           </div>
         </section>
@@ -169,6 +172,12 @@ export default async function ArtistPage({
                       {t.albumName}
                       {t.releaseDate ? ` · ${t.releaseDate.slice(0, 4)}` : ""}
                     </div>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-2 text-xs min-w-28 justify-end tabular-nums">
+                    <span className="text-white/80">
+                      {t.streams !== null ? formatNumber(t.streams) : "—"}
+                    </span>
+                    <span className="text-white/30">plays</span>
                   </div>
                   <div className="hidden md:block text-xs text-white/40 tabular-nums w-12 text-right">
                     {formatDuration(t.durationMs)}

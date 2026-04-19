@@ -91,6 +91,14 @@ export const trackSnapshots = pgTable(
   ],
 );
 
+export const siteSettings = pgTable("site_settings", {
+  id: text("id").primaryKey(),
+  bio: text("bio").notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export type Artist = typeof artists.$inferSelect;
 export type NewArtist = typeof artists.$inferInsert;
 export type Track = typeof tracks.$inferSelect;
