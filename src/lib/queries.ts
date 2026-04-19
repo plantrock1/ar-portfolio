@@ -89,10 +89,11 @@ export async function getArtistTracks(artistId: string) {
 
   const latest = await db.execute<{
     track_id: string;
-    popularity: number;
+    streams: string | null;
+    popularity: number | null;
     captured_at: Date;
   }>(sql`
-    SELECT DISTINCT ON (track_id) track_id, popularity, captured_at
+    SELECT DISTINCT ON (track_id) track_id, streams, popularity, captured_at
     FROM track_snapshots
     WHERE track_id = ANY(${sql.raw(
       "ARRAY[" + tracks.map((t) => `'${t.id}'::uuid`).join(",") + "]",
@@ -100,18 +101,28 @@ export async function getArtistTracks(artistId: string) {
     ORDER BY track_id, captured_at DESC
   `);
 
-  const popById = new Map<string, number>();
-  for (const row of latest.rows) popById.set(row.track_id, row.popularity);
+  const metaById = new Map<string, { streams: number | null; popularity: number | null }>();
+  for (const row of latest.rows) {
+    metaById.set(row.track_id, {
+      streams: row.streams !== null ? Number(row.streams) : null,
+      popularity: row.popularity,
+    });
+  }
 
   return tracks
-    .map((t) => ({ ...t, popularity: popById.get(t.id) ?? null }))
-    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
+    .map((t) => ({
+      ...t,
+      streams: metaById.get(t.id)?.streams ?? null,
+      popularity: metaById.get(t.id)?.popularity ?? null,
+    }))
+    .sort((a, b) => (b.streams ?? 0) - (a.streams ?? 0));
 }
 
 export type AggregateTotals = {
   artistCount: number;
-  totalFollowers: number;
+  totalFollowers: number | null;
   totalMonthlyListeners: number | null;
+  totalStreams: number | null;
   asOf: Date | null;
 };
 
@@ -120,9 +131,10 @@ export async function getAggregate(): Promise<AggregateTotals> {
     artist_count: string;
     total_followers: string | null;
     total_monthly_listeners: string | null;
+    total_streams: string | null;
     as_of: Date | null;
   }>(sql`
-    WITH latest AS (
+    WITH latest_artist AS (
       SELECT DISTINCT ON (s.artist_id)
         s.artist_id,
         s.followers,
@@ -132,21 +144,34 @@ export async function getAggregate(): Promise<AggregateTotals> {
       JOIN artists a ON a.id = s.artist_id
       WHERE a.hidden = false
       ORDER BY s.artist_id, s.captured_at DESC
+    ),
+    latest_track AS (
+      -- dedupe by spotify_id so a collab track between two roster artists
+      -- is only counted once
+      SELECT DISTINCT ON (tr.spotify_id)
+        tr.spotify_id,
+        ts.streams
+      FROM track_snapshots ts
+      JOIN tracks tr ON tr.id = ts.track_id
+      JOIN artists a ON a.id = tr.artist_id
+      WHERE a.hidden = false AND tr.hidden = false
+      ORDER BY tr.spotify_id, ts.captured_at DESC
     )
     SELECT
-      COUNT(*)::text AS artist_count,
-      COALESCE(SUM(followers), 0)::text AS total_followers,
-      SUM(monthly_listeners)::text AS total_monthly_listeners,
-      MAX(captured_at) AS as_of
-    FROM latest
+      (SELECT COUNT(*)::text FROM latest_artist) AS artist_count,
+      (SELECT SUM(followers)::text FROM latest_artist) AS total_followers,
+      (SELECT SUM(monthly_listeners)::text FROM latest_artist) AS total_monthly_listeners,
+      (SELECT SUM(streams)::text FROM latest_track) AS total_streams,
+      (SELECT MAX(captured_at) FROM latest_artist) AS as_of
   `);
   const row = result.rows[0];
   return {
     artistCount: row ? Number(row.artist_count) : 0,
-    totalFollowers: row?.total_followers ? Number(row.total_followers) : 0,
+    totalFollowers: row?.total_followers ? Number(row.total_followers) : null,
     totalMonthlyListeners: row?.total_monthly_listeners
       ? Number(row.total_monthly_listeners)
       : null,
+    totalStreams: row?.total_streams ? Number(row.total_streams) : null,
     asOf: row?.as_of ?? null,
   };
 }

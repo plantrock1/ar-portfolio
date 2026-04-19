@@ -1,6 +1,5 @@
 import { db, schema } from "@/lib/db";
-import { getArtists, getArtistTopTracks } from "@/lib/spotify/api";
-import { scrapeMonthlyListeners } from "@/lib/spotify/scrape";
+import { scrapeArtists } from "@/lib/spotify/scrape";
 import { eq, inArray } from "drizzle-orm";
 
 export type RefreshReport = {
@@ -30,48 +29,31 @@ export async function runRefresh(): Promise<RefreshReport> {
   }
 
   const spotifyIds = roster.map((a) => a.spotifyId);
-  const [apiArtists, scraped] = await Promise.all([
-    getArtists(spotifyIds),
-    scrapeMonthlyListeners(spotifyIds, { concurrency: 4 }),
-  ]);
-
-  const apiById = new Map(apiArtists.map((a) => [a.id, a]));
-  const scrapedById = new Map(scraped.map((s) => [s.spotifyId, s]));
+  const scraped = await scrapeArtists(spotifyIds, { concurrency: 3 });
+  const byId = new Map(scraped.map((s) => [s.spotifyId, s]));
 
   let scrapeHits = 0;
   let scrapeMisses = 0;
+  let tracksRefreshed = 0;
 
   for (const row of roster) {
-    const api = apiById.get(row.spotifyId);
-    if (!api) continue;
-
-    await db
-      .update(schema.artists)
-      .set({
-        name: api.name,
-        genres: api.genres ?? [],
-        imageUrl: api.images[0]?.url ?? row.imageUrl ?? null,
-      })
-      .where(eq(schema.artists.id, row.id));
-
-    const ml = scrapedById.get(row.spotifyId)?.monthlyListeners ?? null;
-    if (ml !== null) scrapeHits += 1;
-    else scrapeMisses += 1;
+    const s = byId.get(row.spotifyId);
+    if (!s || s.monthlyListeners === null) {
+      console.warn(`[refresh] scrape miss for ${row.name} (${row.spotifyId}): ${s?.error ?? "no data"}`);
+      scrapeMisses += 1;
+      continue;
+    }
+    scrapeHits += 1;
 
     await db.insert(schema.artistSnapshots).values({
       artistId: row.id,
-      followers: api.followers.total,
-      monthlyListeners: ml,
-      popularity: api.popularity,
+      followers: null,
+      monthlyListeners: s.monthlyListeners,
+      popularity: null,
     });
-  }
 
-  // Refresh top tracks for each artist (replace set)
-  let tracksRefreshed = 0;
-  for (const row of roster) {
-    try {
-      const top = await getArtistTopTracks(row.spotifyId);
-      const keep = top.slice(0, 10);
+    // Sync top tracks
+    if (s.tracks.length > 0) {
       const existingTracks = await db
         .select()
         .from(schema.tracks)
@@ -79,49 +61,37 @@ export async function runRefresh(): Promise<RefreshReport> {
       const existingBySpotify = new Map(
         existingTracks.map((t) => [t.spotifyId, t]),
       );
-      const keepIds = new Set(keep.map((t) => t.id));
+      const keepIds = new Set(
+        s.tracks.map((t) => t.spotifyId).filter(Boolean) as string[],
+      );
 
-      for (const t of keep) {
-        const existing = existingBySpotify.get(t.id);
-        if (existing) {
-          await db
-            .update(schema.tracks)
-            .set({
-              name: t.name,
-              albumName: t.album.name,
-              albumImageUrl: t.album.images[0]?.url ?? null,
-              releaseDate: t.album.release_date,
-              durationMs: t.duration_ms,
-              explicit: t.explicit,
-            })
-            .where(eq(schema.tracks.id, existing.id));
-          await db.insert(schema.trackSnapshots).values({
-            trackId: existing.id,
-            popularity: t.popularity,
-          });
-        } else {
-          const [inserted] = await db
-            .insert(schema.tracks)
-            .values({
-              spotifyId: t.id,
+      for (const t of s.tracks) {
+        if (!t.spotifyId) continue;
+        try {
+          const existing = existingBySpotify.get(t.spotifyId);
+          if (existing) {
+            await db
+              .update(schema.tracks)
+              .set({
+                name: t.name,
+                albumImageUrl: t.albumImageUrl ?? existing.albumImageUrl ?? null,
+              })
+              .where(eq(schema.tracks.id, existing.id));
+          } else {
+            await db.insert(schema.tracks).values({
+              spotifyId: t.spotifyId,
               artistId: row.id,
               name: t.name,
-              albumName: t.album.name,
-              albumImageUrl: t.album.images[0]?.url ?? null,
-              releaseDate: t.album.release_date,
-              durationMs: t.duration_ms,
-              explicit: t.explicit,
-            })
-            .returning();
-          await db.insert(schema.trackSnapshots).values({
-            trackId: inserted.id,
-            popularity: t.popularity,
-          });
+              albumImageUrl: t.albumImageUrl ?? null,
+            });
+          }
+          tracksRefreshed += 1;
+        } catch (e) {
+          console.error(`[refresh] track insert failed for ${t.spotifyId} (${t.name}):`, e);
         }
-        tracksRefreshed += 1;
       }
 
-      // Remove tracks that fell out of top-10 AND aren't pinned
+      // Remove tracks no longer in top list (unless pinned)
       const toRemove = existingTracks.filter(
         (t) => !keepIds.has(t.spotifyId) && !t.pinned,
       );
@@ -135,8 +105,6 @@ export async function runRefresh(): Promise<RefreshReport> {
             ),
           );
       }
-    } catch (e) {
-      console.error(`[refresh] top-tracks failed for ${row.spotifyId}:`, e);
     }
   }
 

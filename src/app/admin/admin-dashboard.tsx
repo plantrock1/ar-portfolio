@@ -19,6 +19,15 @@ export function AdminDashboard({
   const [isAdding, startAdding] = useTransition();
   const [isRefreshing, startRefresh] = useTransition();
 
+  async function parseResponse(res: Response) {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text.slice(0, 200) || `HTTP ${res.status}` };
+    }
+  }
+
   async function addArtist(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -28,7 +37,7 @@ export function AdminDashboard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ spotifyUrl, role }),
     });
-    const data = await res.json();
+    const data = await parseResponse(res);
     if (!res.ok) {
       setError(data.error ?? "Failed to add");
       return;
@@ -63,9 +72,10 @@ export function AdminDashboard({
     setError(null);
     setMessage("Refreshing… (headless browser, ~20s)");
     const res = await fetch("/api/cron/refresh");
-    const data = await res.json();
+    const data = await parseResponse(res);
     if (!res.ok) {
       setError(data.error ?? "Refresh failed");
+      setMessage(null);
       return;
     }
     setMessage(

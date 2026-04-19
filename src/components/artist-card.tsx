@@ -7,7 +7,6 @@ type Props = {
   name: string;
   imageUrl: string | null;
   role?: string | null;
-  followers: number | null;
   monthlyListeners: number | null;
 };
 
@@ -16,7 +15,6 @@ export function ArtistCard({
   name,
   imageUrl,
   role,
-  followers,
   monthlyListeners,
 }: Props) {
   return (
@@ -50,15 +48,11 @@ export function ArtistCard({
         <div className="flex items-baseline gap-6 text-sm">
           <div className="flex flex-col">
             <span className="text-white/40 text-[10px] uppercase tracking-widest">
-              Monthly
+              Monthly Listeners
             </span>
-            <span className="text-white/90">{formatNumber(monthlyListeners)}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-white/40 text-[10px] uppercase tracking-widest">
-              Followers
+            <span className="text-white/90 text-lg">
+              {formatNumber(monthlyListeners)}
             </span>
-            <span className="text-white/90">{formatNumber(followers)}</span>
           </div>
         </div>
       </div>

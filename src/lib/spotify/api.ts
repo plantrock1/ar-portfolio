@@ -71,13 +71,18 @@ export async function getArtist(spotifyId: string): Promise<SpotifyArtist> {
 
 export async function getArtists(ids: string[]): Promise<SpotifyArtist[]> {
   if (ids.length === 0) return [];
+  // Spotify's batch /artists?ids= endpoint 403s for new-app Client Credentials,
+  // so we parallelize single-artist lookups instead.
   const out: SpotifyArtist[] = [];
-  for (let i = 0; i < ids.length; i += 50) {
-    const batch = ids.slice(i, i + 50);
-    const r = await spotify<{ artists: SpotifyArtist[] }>(
-      `/artists?ids=${batch.join(",")}`,
-    );
-    out.push(...r.artists);
+  const concurrency = 6;
+  for (let i = 0; i < ids.length; i += concurrency) {
+    const chunk = ids.slice(i, i + concurrency);
+    const results = await Promise.allSettled(chunk.map((id) => getArtist(id)));
+    for (let j = 0; j < results.length; j += 1) {
+      const r = results[j];
+      if (r.status === "fulfilled") out.push(r.value);
+      else console.error(`[spotify] getArtist(${chunk[j]}) failed:`, r.reason);
+    }
   }
   return out;
 }
@@ -92,15 +97,18 @@ export async function getArtistTopTracks(
   return r.tracks;
 }
 
+export async function getTrack(id: string): Promise<SpotifyTrack> {
+  return spotify<SpotifyTrack>(`/tracks/${id}`);
+}
+
 export async function getTracks(ids: string[]): Promise<SpotifyTrack[]> {
   if (ids.length === 0) return [];
   const out: SpotifyTrack[] = [];
-  for (let i = 0; i < ids.length; i += 50) {
-    const batch = ids.slice(i, i + 50);
-    const r = await spotify<{ tracks: SpotifyTrack[] }>(
-      `/tracks?ids=${batch.join(",")}`,
-    );
-    out.push(...r.tracks);
+  const concurrency = 6;
+  for (let i = 0; i < ids.length; i += concurrency) {
+    const chunk = ids.slice(i, i + concurrency);
+    const results = await Promise.allSettled(chunk.map((id) => getTrack(id)));
+    for (const r of results) if (r.status === "fulfilled") out.push(r.value);
   }
   return out;
 }

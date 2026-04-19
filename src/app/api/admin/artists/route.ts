@@ -71,22 +71,37 @@ export async function POST(req: NextRequest) {
     slug = `${baseSlug}-${n++}`;
   }
 
-  const [inserted] = await db
-    .insert(schema.artists)
-    .values({
-      spotifyId,
-      name: info.name,
-      slug,
-      imageUrl: info.images[0]?.url ?? null,
-      genres: info.genres ?? [],
-      role: parsed.data.role?.trim() || null,
-    })
-    .returning();
+  let inserted;
+  try {
+    const rows = await db
+      .insert(schema.artists)
+      .values({
+        spotifyId,
+        name: info.name,
+        slug,
+        imageUrl: info.images?.[0]?.url ?? null,
+        genres: info.genres ?? [],
+        role: parsed.data.role?.trim() || null,
+      })
+      .returning();
+    inserted = rows[0];
+  } catch (e) {
+    // Unique violation — someone added the same artist in a concurrent request
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("artists_spotify_id_unique") || msg.includes("duplicate key")) {
+      const [again] = await db
+        .select()
+        .from(schema.artists)
+        .where(eq(schema.artists.spotifyId, spotifyId));
+      if (again) return NextResponse.json({ artist: again, duplicate: true });
+    }
+    throw e;
+  }
 
   await db.insert(schema.artistSnapshots).values({
     artistId: inserted.id,
-    followers: info.followers.total,
-    popularity: info.popularity,
+    followers: info.followers?.total ?? 0,
+    popularity: info.popularity ?? 0,
     monthlyListeners: null,
   });
 

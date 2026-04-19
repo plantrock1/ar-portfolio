@@ -27,7 +27,7 @@ export const tracks = pgTable(
   "tracks",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    spotifyId: text("spotify_id").notNull().unique(),
+    spotifyId: text("spotify_id").notNull(),
     artistId: uuid("artist_id")
       .notNull()
       .references(() => artists.id, { onDelete: "cascade" }),
@@ -41,7 +41,10 @@ export const tracks = pgTable(
     hidden: boolean("hidden").notNull().default(false),
     addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("tracks_artist_id_idx").on(t.artistId)],
+  (t) => [
+    index("tracks_artist_id_idx").on(t.artistId),
+    unique("tracks_artist_spotify_unique").on(t.artistId, t.spotifyId),
+  ],
 );
 
 export const artistSnapshots = pgTable(
@@ -51,9 +54,9 @@ export const artistSnapshots = pgTable(
     artistId: uuid("artist_id")
       .notNull()
       .references(() => artists.id, { onDelete: "cascade" }),
-    followers: bigint("followers", { mode: "number" }).notNull(),
+    followers: bigint("followers", { mode: "number" }),
     monthlyListeners: bigint("monthly_listeners", { mode: "number" }),
-    popularity: integer("popularity").notNull(),
+    popularity: integer("popularity"),
     capturedAt: timestamp("captured_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -74,7 +77,8 @@ export const trackSnapshots = pgTable(
     trackId: uuid("track_id")
       .notNull()
       .references(() => tracks.id, { onDelete: "cascade" }),
-    popularity: integer("popularity").notNull(),
+    streams: bigint("streams", { mode: "number" }),
+    popularity: integer("popularity"),
     capturedAt: timestamp("captured_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

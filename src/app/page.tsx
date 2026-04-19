@@ -31,7 +31,7 @@ export default async function Home() {
         <div className="divider" />
 
         <section className="py-14 md:py-20">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-14">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-10 md:gap-14">
             <Stat label="Artists" value={totals.artistCount} />
             <Stat
               label="Monthly Listeners"
@@ -41,11 +41,6 @@ export default async function Home() {
                   ? formatFullNumber(totals.totalMonthlyListeners)
                   : "Awaiting refresh"
               }
-            />
-            <Stat
-              label="Followers"
-              value={totals.totalFollowers}
-              sub={formatFullNumber(totals.totalFollowers)}
             />
             <Stat
               label="Last Refresh"
@@ -91,7 +86,6 @@ export default async function Home() {
                   name={a.name}
                   imageUrl={a.imageUrl}
                   role={a.role}
-                  followers={a.latest.followers}
                   monthlyListeners={a.latest.monthlyListeners}
                 />
               ))}

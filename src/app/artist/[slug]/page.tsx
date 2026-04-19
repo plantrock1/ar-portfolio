@@ -9,7 +9,6 @@ import {
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { Stat } from "@/components/stat";
 import { GrowthChart } from "@/components/growth-chart";
-import { formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -47,10 +46,6 @@ export default async function ArtistPage({
   const monthlyListenersSeries = history.map((h) => ({
     day: toDayLabel(h.capturedAt),
     value: h.monthlyListeners !== null ? Number(h.monthlyListeners) : null,
-  }));
-  const followersSeries = history.map((h) => ({
-    day: toDayLabel(h.capturedAt),
-    value: Number(h.followers),
   }));
 
   return (
@@ -113,44 +108,30 @@ export default async function ArtistPage({
         <div className="divider" />
 
         <section className="py-12">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-10">
+          <div className="grid grid-cols-2 md:grid-cols-2 gap-10">
             <Stat
               label="Monthly Listeners"
               value={latest?.monthlyListeners ? Number(latest.monthlyListeners) : null}
             />
             <Stat
-              label="Followers"
-              value={latest ? Number(latest.followers) : null}
-            />
-            <Stat
-              label="Popularity"
-              value={latest?.popularity ?? null}
-              sub="Spotify score (0–100)"
+              label="Top Tracks"
+              value={tracks.length || null}
+              sub="Pulled from Spotify"
             />
           </div>
         </section>
 
         <div className="divider" />
 
-        <section className="py-12 grid gap-12 md:grid-cols-2">
-          <div>
-            <h3 className="display text-2xl text-white mb-5">
-              Monthly listeners over time
-            </h3>
-            <GrowthChart
-              label="Monthly"
-              data={monthlyListenersSeries}
-              color="#1db954"
-            />
-          </div>
-          <div>
-            <h3 className="display text-2xl text-white mb-5">Followers</h3>
-            <GrowthChart
-              label="Followers"
-              data={followersSeries}
-              color="#60a5fa"
-            />
-          </div>
+        <section className="py-12">
+          <h3 className="display text-2xl text-white mb-5">
+            Monthly listeners over time
+          </h3>
+          <GrowthChart
+            label="Monthly Listeners"
+            data={monthlyListenersSeries}
+            color="#1db954"
+          />
         </section>
 
         <div className="divider" />
@@ -189,12 +170,6 @@ export default async function ArtistPage({
                       {t.releaseDate ? ` · ${t.releaseDate.slice(0, 4)}` : ""}
                     </div>
                   </div>
-                  <div className="hidden sm:flex items-center gap-2 text-xs text-white/50 min-w-24 justify-end">
-                    <span>Pop.</span>
-                    <span className="text-white/80 tabular-nums">
-                      {t.popularity ?? "—"}
-                    </span>
-                  </div>
                   <div className="hidden md:block text-xs text-white/40 tabular-nums w-12 text-right">
                     {formatDuration(t.durationMs)}
                   </div>
@@ -214,8 +189,7 @@ export default async function ArtistPage({
 
         {latest ? (
           <div className="pt-8 text-xs text-white/30">
-            Last updated {new Date(latest.capturedAt).toLocaleString()} ·{" "}
-            {formatNumber(latest.followers ? Number(latest.followers) : 0)} followers
+            Last updated {new Date(latest.capturedAt).toLocaleString()}
           </div>
         ) : null}
       </main>
