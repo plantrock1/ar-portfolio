@@ -97,6 +97,52 @@ export async function getArtistTopTracks(
   return r.tracks;
 }
 
+export type SpotifyArtistAlbum = {
+  id: string;
+  name: string;
+  album_type: "album" | "single" | "compilation" | "appears_on";
+  release_date: string;
+  total_tracks: number;
+  images: { url: string; height: number; width: number }[];
+  artists: { id: string; name: string }[];
+};
+
+/**
+ * Returns all albums owned by the artist (album + single + compilation groups;
+ * excludes "appears_on" which is pollution from features).
+ *
+ * Note: our stripped Spotify app 400s when we pass limit=N on this endpoint,
+ * so we use the default (limit=5) and paginate by offset.
+ */
+export async function getAllArtistAlbums(
+  spotifyId: string,
+): Promise<SpotifyArtistAlbum[]> {
+  const out: SpotifyArtistAlbum[] = [];
+  let offset = 0;
+  // Safety cap so we never loop forever on malformed responses.
+  for (let i = 0; i < 60; i += 1) {
+    const r = await spotify<{
+      items: SpotifyArtistAlbum[];
+      next: string | null;
+      limit: number;
+      total: number;
+    }>(
+      `/artists/${spotifyId}/albums?include_groups=album,single,compilation&offset=${offset}`,
+    );
+    out.push(...r.items);
+    if (!r.next || r.items.length === 0) break;
+    offset += r.items.length;
+    if (offset >= r.total) break;
+  }
+  // Dedupe by id (can happen across markets / reissues)
+  const seen = new Set<string>();
+  return out.filter((a) => {
+    if (seen.has(a.id)) return false;
+    seen.add(a.id);
+    return true;
+  });
+}
+
 export async function getTrack(id: string): Promise<SpotifyTrack> {
   return spotify<SpotifyTrack>(`/tracks/${id}`);
 }

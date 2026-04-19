@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import {
   getArtistBySlug,
   getArtistHistory,
-  getArtistTracks,
+  getArtistTopTracks,
+  getArtistTotalStreams,
 } from "@/lib/queries";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { Stat } from "@/components/stat";
@@ -37,9 +38,10 @@ export default async function ArtistPage({
   const artist = await getArtistBySlug(slug);
   if (!artist) notFound();
 
-  const [history, tracks] = await Promise.all([
+  const [history, tracks, totalStreams] = await Promise.all([
     getArtistHistory(artist.id),
-    getArtistTracks(artist.id),
+    getArtistTopTracks(artist.id, 5),
+    getArtistTotalStreams(artist.id),
   ]);
 
   const latest = history[history.length - 1] ?? null;
@@ -116,9 +118,7 @@ export default async function ArtistPage({
             />
             <Stat
               label="Total streams"
-              value={
-                tracks.reduce((acc, t) => acc + (t.streams ?? 0), 0) || null
-              }
+              value={totalStreams || null}
             />
           </div>
         </section>
@@ -139,7 +139,7 @@ export default async function ArtistPage({
         <div className="divider" />
 
         <section className="pt-12">
-          <h3 className="display text-2xl text-white mb-6">Top tracks</h3>
+          <h3 className="display text-2xl text-white mb-6">Top 5 tracks</h3>
           {tracks.length === 0 ? (
             <div className="text-sm text-white/40">
               No tracks loaded yet — they'll appear after the next refresh.

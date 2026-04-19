@@ -1,9 +1,25 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type { Artist } from "@/lib/db/schema";
+
+type RefreshRun = {
+  kind: "shallow" | "deep";
+  status: "idle" | "running" | "done" | "failed";
+  phase: string | null;
+  message: string | null;
+  artistIndex: number;
+  artistTotal: number;
+  albumsScraped: number;
+  albumsTotal: number;
+  tracksUpserted: number;
+  startedAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  error: string | null;
+};
 
 export function AdminDashboard({
   initialArtists,
@@ -36,6 +52,44 @@ export function AdminDashboard({
   const [isDeepRefreshing, startDeepRefresh] = useTransition();
   const [isSavingBio, startSavingBio] = useTransition();
   const [isSavingSession, startSavingSession] = useTransition();
+  const [run, setRun] = useState<RefreshRun | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function startPolling() {
+    stopPolling();
+    pollTimer.current = setInterval(async () => {
+      try {
+        const res = await fetch("/api/admin/refresh-status", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        setRun(data.run ?? null);
+        if (data.run && data.run.status !== "running") {
+          stopPolling();
+          router.refresh();
+        }
+      } catch {
+        // network hiccup; keep polling
+      }
+    }, 1500);
+  }
+  function stopPolling() {
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current);
+      pollTimer.current = null;
+    }
+  }
+  useEffect(() => {
+    // On mount, check if a run is already in flight (e.g., page reload during refresh)
+    (async () => {
+      const res = await fetch("/api/admin/refresh-status", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRun(data.run ?? null);
+      if (data.run?.status === "running") startPolling();
+    })();
+    return stopPolling;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function parseResponse(res: Response) {
     const text = await res.text();
@@ -88,12 +142,18 @@ export function AdminDashboard({
 
   async function refreshNow() {
     setError(null);
-    setMessage("Refreshing… (headless browser, ~20s)");
+    setMessage(null);
+    startPolling();
     const res = await fetch("/api/cron/refresh");
     const data = await parseResponse(res);
+    stopPolling();
+    // Final poll to pick up completion state
+    const final = await fetch("/api/admin/refresh-status", {
+      cache: "no-store",
+    });
+    if (final.ok) setRun((await final.json()).run ?? null);
     if (!res.ok) {
       setError(data.error ?? "Refresh failed");
-      setMessage(null);
       return;
     }
     setMessage(
@@ -106,12 +166,17 @@ export function AdminDashboard({
 
   async function deepRefresh() {
     setError(null);
-    setMessage("Deep refresh running… scraping every album, this may take several minutes.");
+    setMessage(null);
+    startPolling();
     const res = await fetch("/api/cron/deep-refresh");
     const data = await parseResponse(res);
+    stopPolling();
+    const final = await fetch("/api/admin/refresh-status", {
+      cache: "no-store",
+    });
+    if (final.ok) setRun((await final.json()).run ?? null);
     if (!res.ok) {
       setError(data.error ?? "Deep refresh failed");
-      setMessage(null);
       return;
     }
     setMessage(
@@ -320,10 +385,16 @@ export function AdminDashboard({
             {isAdding ? "Adding…" : "Add"}
           </button>
         </form>
+        {run && run.status === "running" ? (
+          <ProgressBar run={run} />
+        ) : null}
         <div className="mt-4 flex items-center justify-between gap-3 text-sm">
           <div className="text-white/50 min-w-0 flex-1">
             {message ? <span className="text-green-400">{message}</span> : null}
             {error ? <span className="text-red-400">{error}</span> : null}
+            {!message && !error && run && run.status !== "running" ? (
+              <LastRunLabel run={run} />
+            ) : null}
           </div>
           <div className="flex gap-2 shrink-0">
             <button
@@ -405,6 +476,66 @@ export function AdminDashboard({
         )}
       </section>
     </main>
+  );
+}
+
+function ProgressBar({ run }: { run: RefreshRun }) {
+  // Rough total = artistTotal (for shallow) OR albumsTotal (for deep).
+  const denom = run.kind === "deep" ? Math.max(run.albumsTotal, 1) : Math.max(run.artistTotal, 1);
+  const done = run.kind === "deep" ? run.albumsScraped : run.artistIndex;
+  const pct = Math.min(100, Math.round((done / denom) * 100));
+  return (
+    <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <div className="text-sm text-white">
+          <span className="text-white/50">
+            {run.kind === "deep" ? "Deep refresh" : "Refresh"} ·{" "}
+          </span>
+          {run.message ?? run.phase ?? "Working…"}
+        </div>
+        <div className="text-xs text-white/50 tabular-nums">
+          {run.kind === "deep"
+            ? `${run.albumsScraped}/${run.albumsTotal} albums · ${run.tracksUpserted} tracks`
+            : `${run.artistIndex}/${run.artistTotal} artists · ${run.tracksUpserted} tracks`}
+        </div>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+        <div
+          className="h-full bg-[#1db954] transition-all duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function LastRunLabel({ run }: { run: RefreshRun }) {
+  if (!run.completedAt) return null;
+  const ended = new Date(run.completedAt);
+  const secs = run.completedAt
+    ? Math.round(
+        (new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) /
+          1000,
+      )
+    : 0;
+  const when = ended.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  if (run.status === "failed") {
+    return (
+      <span className="text-red-400">
+        Last {run.kind} run failed at {when}
+        {run.error ? ` — ${run.error}` : ""}
+      </span>
+    );
+  }
+  return (
+    <span className="text-white/50">
+      Last {run.kind} run finished {when} · {secs}s
+    </span>
   );
 }
 

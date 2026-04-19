@@ -1,14 +1,22 @@
 import { db, schema } from "@/lib/db";
 import {
+  launchBrowser,
   scrapeArtistPages,
-  scrapeArtistsDeep,
+  scrapeAlbumsAuthed,
   checkSession,
+  type ScrapedTrack,
 } from "@/lib/spotify/scrape";
+import { getAllArtistAlbums } from "@/lib/spotify/api";
 import {
   getSpotifySession,
   markSessionStatus,
 } from "@/lib/spotify/session";
-import { eq, inArray } from "drizzle-orm";
+import {
+  beginRun,
+  updateRun,
+  completeRun,
+} from "@/lib/refresh-status";
+import { eq } from "drizzle-orm";
 
 export type RefreshReport = {
   mode: "shallow" | "deep";
@@ -22,8 +30,8 @@ export type RefreshReport = {
 };
 
 /**
- * Shallow refresh — artist page only. Fast. Daily cron.
- * Updates monthly listeners + top tracks (with or without cookie).
+ * Shallow refresh — artist pages only. Fast daily pass for monthly listeners
+ * and top-5 stream counts.
  */
 export async function runRefresh(): Promise<RefreshReport> {
   const startedAt = Date.now();
@@ -34,7 +42,10 @@ export async function runRefresh(): Promise<RefreshReport> {
     .from(schema.artists)
     .where(eq(schema.artists.hidden, false));
 
+  await beginRun("shallow", roster.length);
+
   if (roster.length === 0) {
+    await completeRun("done");
     return {
       mode: "shallow",
       artistsRefreshed: 0,
@@ -47,58 +58,78 @@ export async function runRefresh(): Promise<RefreshReport> {
     };
   }
 
-  const spotifyIds = roster.map((a) => a.spotifyId);
-  const scraped = await scrapeArtistPages(spotifyIds, {
-    spDc: session.spDc,
-    concurrency: 3,
-  });
-  const byId = new Map(scraped.map((s) => [s.spotifyId, s]));
+  try {
+    await updateRun({ phase: "artists", message: "Scraping artist pages…" });
 
-  let scrapeHits = 0;
-  let scrapeMisses = 0;
-  let tracksRefreshed = 0;
-
-  for (const row of roster) {
-    const s = byId.get(row.spotifyId);
-    if (!s || s.monthlyListeners === null) {
-      scrapeMisses += 1;
-      continue;
-    }
-    scrapeHits += 1;
-
-    await db.insert(schema.artistSnapshots).values({
-      artistId: row.id,
-      followers: null,
-      monthlyListeners: s.monthlyListeners,
-      popularity: null,
+    const spotifyIds = roster.map((a) => a.spotifyId);
+    const scraped = await scrapeArtistPages(spotifyIds, {
+      spDc: session.spDc,
+      concurrency: 3,
     });
+    const byId = new Map(scraped.map((s) => [s.spotifyId, s]));
 
-    for (const t of s.tracks) {
-      try {
-        await upsertTrack(row.id, t);
-        tracksRefreshed += 1;
-      } catch (e) {
-        console.error(`[refresh] track upsert failed ${t.spotifyId}:`, e);
+    let scrapeHits = 0;
+    let scrapeMisses = 0;
+    let tracksUpserted = 0;
+
+    let i = 0;
+    for (const row of roster) {
+      i += 1;
+      await updateRun({
+        phase: "artists",
+        artistIndex: i,
+        message: `Saving ${row.name} (${i}/${roster.length})`,
+      });
+
+      const s = byId.get(row.spotifyId);
+      if (!s || s.monthlyListeners === null) {
+        scrapeMisses += 1;
+        continue;
       }
-    }
-  }
+      scrapeHits += 1;
 
-  return {
-    mode: "shallow",
-    artistsRefreshed: roster.length,
-    tracksRefreshed,
-    albumsScraped: 0,
-    scrapeHits,
-    scrapeMisses,
-    durationMs: Date.now() - startedAt,
-    sessionStatus: session.spDc ? session.status : "absent",
-  };
+      await db.insert(schema.artistSnapshots).values({
+        artistId: row.id,
+        followers: null,
+        monthlyListeners: s.monthlyListeners,
+        popularity: null,
+      });
+
+      for (const t of s.tracks) {
+        try {
+          await upsertTrack(row.id, t);
+          tracksUpserted += 1;
+        } catch (e) {
+          console.error(`[refresh] track upsert failed ${t.spotifyId}:`, e);
+        }
+      }
+      await updateRun({ tracksUpserted });
+    }
+
+    await completeRun("done");
+    return {
+      mode: "shallow",
+      artistsRefreshed: roster.length,
+      tracksRefreshed: tracksUpserted,
+      albumsScraped: 0,
+      scrapeHits,
+      scrapeMisses,
+      durationMs: Date.now() - startedAt,
+      sessionStatus: session.spDc ? session.status : "absent",
+    };
+  } catch (e) {
+    await completeRun(
+      "failed",
+      e instanceof Error ? e.message : String(e),
+    );
+    throw e;
+  }
 }
 
 /**
- * Deep refresh — artist page + every album page → all tracks with plays.
- * Requires an sp_dc cookie (album pages gate play counts to logged-in users).
- * Run from admin button, not daily cron.
+ * Deep refresh — full discography pull. Uses Spotify API for canonical album
+ * list (filtered to albums the artist actually owns) + scrapes each album page
+ * with the session cookie to extract stream counts.
  */
 export async function runDeepRefresh(): Promise<RefreshReport> {
   const startedAt = Date.now();
@@ -110,84 +141,180 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
     );
   }
 
-  // Verify cookie still works before committing to the long scrape
-  const check = await checkSession(session.spDc);
-  if (!check.authenticated) {
-    await markSessionStatus("expired");
-    throw new Error(
-      "Spotify session expired. Re-import sp_dc cookie in /admin.",
-    );
-  }
-  await markSessionStatus("ok");
-
   const roster = await db
     .select()
     .from(schema.artists)
     .where(eq(schema.artists.hidden, false));
 
-  if (roster.length === 0) {
+  await beginRun("deep", roster.length);
+
+  try {
+    await updateRun({ phase: "session", message: "Verifying Spotify session…" });
+
+    const check = await checkSession(session.spDc);
+    if (!check.authenticated) {
+      await markSessionStatus("expired");
+      throw new Error(
+        "Spotify session expired. Re-import sp_dc cookie in /admin.",
+      );
+    }
+    await markSessionStatus("ok");
+
+    if (roster.length === 0) {
+      await completeRun("done");
+      return {
+        mode: "deep",
+        artistsRefreshed: 0,
+        tracksRefreshed: 0,
+        albumsScraped: 0,
+        scrapeHits: 0,
+        scrapeMisses: 0,
+        durationMs: Date.now() - startedAt,
+        sessionStatus: "ok",
+      };
+    }
+
+    // Phase 1: shallow scrape all artist pages (monthly listeners + top tracks)
+    await updateRun({
+      phase: "artists",
+      message: "Scraping artist pages for monthly listeners…",
+    });
+    const artistScrapes = await scrapeArtistPages(
+      roster.map((a) => a.spotifyId),
+      { spDc: session.spDc, concurrency: 3 },
+    );
+    const artistById = new Map(artistScrapes.map((s) => [s.spotifyId, s]));
+
+    // Phase 2: per-artist album discovery via API, then scrape each album
+    let tracksUpserted = 0;
+    let albumsScraped = 0;
+    let albumsTotalRunning = 0;
+    let scrapeHits = 0;
+    let scrapeMisses = 0;
+
+    // First pass — discover all albums via API so we know total up front
+    await updateRun({
+      phase: "discovery",
+      message: "Listing albums via Spotify API…",
+    });
+    const artistAlbums: { artist: typeof roster[number]; albumIds: string[] }[] =
+      [];
+    for (const row of roster) {
+      try {
+        const albums = await getAllArtistAlbums(row.spotifyId);
+        artistAlbums.push({ artist: row, albumIds: albums.map((a) => a.id) });
+        albumsTotalRunning += albums.length;
+        await updateRun({
+          albumsTotal: albumsTotalRunning,
+          message: `Listed ${albums.length} albums for ${row.name}`,
+        });
+      } catch (e) {
+        console.error(`[deep] album list failed for ${row.name}:`, e);
+        artistAlbums.push({ artist: row, albumIds: [] });
+      }
+    }
+
+    // Phase 3: scrape each artist's albums, writing progress
+    const browser = await launchBrowser();
+    try {
+      let artistIdx = 0;
+      for (const { artist: row, albumIds } of artistAlbums) {
+        artistIdx += 1;
+        await updateRun({
+          phase: "albums",
+          artistIndex: artistIdx,
+          message: `Scraping ${row.name} · ${albumIds.length} albums`,
+        });
+
+        const s = artistById.get(row.spotifyId);
+        if (s && s.monthlyListeners !== null) {
+          scrapeHits += 1;
+          await db.insert(schema.artistSnapshots).values({
+            artistId: row.id,
+            followers: null,
+            monthlyListeners: s.monthlyListeners,
+            popularity: null,
+          });
+        } else {
+          scrapeMisses += 1;
+        }
+
+        // Track collector starts with artist-page top tracks (they include streams)
+        const byTrack = new Map<string, ScrapedTrack>();
+        if (s) for (const t of s.tracks) byTrack.set(t.spotifyId, t);
+
+        // Scrape albums sequentially per-artist but with concurrent workers inside
+        if (albumIds.length > 0) {
+          let albumsDoneForThis = 0;
+          const queue = [...albumIds];
+          const concurrency = 4;
+          await Promise.all(
+            Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+              while (queue.length) {
+                const aid = queue.shift();
+                if (!aid) return;
+                const [album] = await scrapeAlbumsAuthed([aid], {
+                  spDc: session.spDc!,
+                  browser,
+                  filterArtistName: row.name,
+                });
+                if (album) {
+                  for (const t of album.tracks) {
+                    const existing = byTrack.get(t.spotifyId);
+                    if (!existing) {
+                      byTrack.set(t.spotifyId, t);
+                    } else if ((t.streams ?? 0) > (existing.streams ?? 0)) {
+                      byTrack.set(t.spotifyId, {
+                        ...existing,
+                        streams: t.streams,
+                      });
+                    }
+                  }
+                }
+                albumsDoneForThis += 1;
+                albumsScraped += 1;
+                await updateRun({
+                  albumsScraped,
+                  message: `${row.name}: ${albumsDoneForThis}/${albumIds.length} albums`,
+                });
+              }
+            }),
+          );
+        }
+
+        // Persist every track for this artist
+        for (const t of byTrack.values()) {
+          try {
+            await upsertTrack(row.id, t);
+            tracksUpserted += 1;
+          } catch (e) {
+            console.error(`[deep] track upsert failed ${t.spotifyId}:`, e);
+          }
+        }
+        await updateRun({ tracksUpserted });
+      }
+    } finally {
+      await browser.close().catch(() => {});
+    }
+
+    await completeRun("done");
     return {
       mode: "deep",
-      artistsRefreshed: 0,
-      tracksRefreshed: 0,
-      albumsScraped: 0,
-      scrapeHits: 0,
-      scrapeMisses: 0,
+      artistsRefreshed: roster.length,
+      tracksRefreshed: tracksUpserted,
+      albumsScraped,
+      scrapeHits,
+      scrapeMisses,
       durationMs: Date.now() - startedAt,
       sessionStatus: "ok",
     };
+  } catch (e) {
+    await completeRun(
+      "failed",
+      e instanceof Error ? e.message : String(e),
+    );
+    throw e;
   }
-
-  const spotifyIds = roster.map((a) => a.spotifyId);
-  const results = await scrapeArtistsDeep(spotifyIds, {
-    spDc: session.spDc,
-    concurrency: 4,
-  });
-
-  const byId = new Map(results.map((r) => [r.spotifyId, r]));
-  let scrapeHits = 0;
-  let scrapeMisses = 0;
-  let tracksRefreshed = 0;
-  let albumsScraped = 0;
-
-  for (const row of roster) {
-    const s = byId.get(row.spotifyId);
-    if (!s) {
-      scrapeMisses += 1;
-      continue;
-    }
-    albumsScraped += s.albumCount;
-
-    if (s.monthlyListeners !== null) {
-      scrapeHits += 1;
-      await db.insert(schema.artistSnapshots).values({
-        artistId: row.id,
-        followers: null,
-        monthlyListeners: s.monthlyListeners,
-        popularity: null,
-      });
-    }
-
-    for (const t of s.tracks) {
-      try {
-        await upsertTrack(row.id, t);
-        tracksRefreshed += 1;
-      } catch (e) {
-        console.error(`[deep refresh] track upsert failed ${t.spotifyId}:`, e);
-      }
-    }
-  }
-
-  return {
-    mode: "deep",
-    artistsRefreshed: roster.length,
-    tracksRefreshed,
-    albumsScraped,
-    scrapeHits,
-    scrapeMisses,
-    durationMs: Date.now() - startedAt,
-    sessionStatus: "ok",
-  };
 }
 
 async function upsertTrack(
@@ -233,6 +360,3 @@ async function upsertTrack(
     popularity: null,
   });
 }
-
-// re-export for potential future cleanup usage
-export { inArray };

@@ -91,6 +91,27 @@ export const trackSnapshots = pgTable(
   ],
 );
 
+export const refreshRuns = pgTable("refresh_runs", {
+  id: text("id").primaryKey(), // single 'current' row
+  kind: text("kind").notNull(), // 'shallow' | 'deep'
+  status: text("status").notNull(), // 'idle' | 'running' | 'done' | 'failed'
+  phase: text("phase"),
+  message: text("message"),
+  artistIndex: integer("artist_index").notNull().default(0),
+  artistTotal: integer("artist_total").notNull().default(0),
+  albumsScraped: integer("albums_scraped").notNull().default(0),
+  albumsTotal: integer("albums_total").notNull().default(0),
+  tracksUpserted: integer("tracks_upserted").notNull().default(0),
+  startedAt: timestamp("started_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  error: text("error"),
+});
+
 export const siteSettings = pgTable("site_settings", {
   id: text("id").primaryKey(),
   bio: text("bio").notNull().default(""),

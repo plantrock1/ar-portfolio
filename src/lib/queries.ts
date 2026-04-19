@@ -118,6 +118,29 @@ export async function getArtistTracks(artistId: string) {
     .sort((a, b) => (b.streams ?? 0) - (a.streams ?? 0));
 }
 
+export async function getArtistTopTracks(artistId: string, limit = 5) {
+  const all = await getArtistTracks(artistId);
+  return all.slice(0, limit);
+}
+
+export async function getArtistTotalStreams(
+  artistId: string,
+): Promise<number> {
+  const result = await db.execute<{ total: string | null }>(sql`
+    WITH latest_track AS (
+      SELECT DISTINCT ON (tr.spotify_id)
+        tr.spotify_id,
+        ts.streams
+      FROM tracks tr
+      JOIN track_snapshots ts ON ts.track_id = tr.id
+      WHERE tr.artist_id = ${artistId} AND tr.hidden = false AND ts.streams IS NOT NULL
+      ORDER BY tr.spotify_id, ts.captured_at DESC
+    )
+    SELECT SUM(streams)::text AS total FROM latest_track
+  `);
+  return result.rows[0]?.total ? Number(result.rows[0].total) : 0;
+}
+
 export type AggregateTotals = {
   artistCount: number;
   totalFollowers: number | null;

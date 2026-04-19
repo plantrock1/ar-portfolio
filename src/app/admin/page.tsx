@@ -33,12 +33,12 @@ export default async function AdminPage() {
       <AdminDashboard
         initialArtists={artists}
         initialBio={settings.bio}
-        lastRefreshedAt={aggregate.asOf ? aggregate.asOf.toISOString() : null}
+        lastRefreshedAt={aggregate.asOf ? new Date(aggregate.asOf).toISOString() : null}
         session={{
           hasCookie: !!session.spDc,
           status: session.status,
           updatedAt: session.updatedAt
-            ? session.updatedAt.toISOString()
+            ? new Date(session.updatedAt).toISOString()
             : null,
           preview: session.spDc
             ? `${session.spDc.slice(0, 4)}…${session.spDc.slice(-4)}`

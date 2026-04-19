@@ -362,9 +362,13 @@ async function scrapeArtistPage(
 
 export async function scrapeAlbumsAuthed(
   albumIds: string[],
-  opts: { spDc: string; concurrency?: number; browser?: Browser } = {
-    spDc: "",
-  },
+  opts: {
+    spDc: string;
+    concurrency?: number;
+    browser?: Browser;
+    /** If set, keep only tracks where row text contains this artist's name */
+    filterArtistName?: string;
+  } = { spDc: "" },
 ): Promise<ScrapedAlbum[]> {
   if (albumIds.length === 0) return [];
   if (!opts.spDc) throw new Error("scrapeAlbumsAuthed requires a sp_dc cookie");
@@ -381,7 +385,9 @@ export async function scrapeAlbumsAuthed(
         const page = await browser.newPage();
         try {
           await setupPage(page, opts.spDc);
-          results.push(await scrapeAlbumPage(page, id));
+          results.push(
+            await scrapeAlbumPage(page, id, opts.filterArtistName),
+          );
         } finally {
           await page.close().catch(() => {});
         }
@@ -401,6 +407,7 @@ export async function scrapeAlbumsAuthed(
 async function scrapeAlbumPage(
   page: Page,
   albumId: string,
+  filterArtistName?: string,
 ): Promise<ScrapedAlbum> {
   try {
     await page.goto(`https://open.spotify.com/album/${albumId}`, {
@@ -414,7 +421,7 @@ async function scrapeAlbumPage(
     await page.evaluate(() => window.scrollTo(0, 400)).catch(() => {});
     await new Promise((r) => setTimeout(r, 2000));
 
-    const data = await page.evaluate(() => {
+    const data = await page.evaluate((filterName: string | null) => {
       function biggestNumber(text: string): string | null {
         const cleaned = text.replace(/\d+:\d+/g, " ");
         const matches = cleaned.match(/\d{1,3}(?:,\d{3})+|\d{5,}/g);
@@ -431,7 +438,6 @@ async function scrapeAlbumPage(
         return best;
       }
 
-      // Find the album cover image at the top of the page
       const coverImg = document.querySelector(
         "main img[src*='i.scdn.co']",
       ) as HTMLImageElement | null;
@@ -458,7 +464,18 @@ async function scrapeAlbumPage(
         if (seen.has(id)) continue;
         const name = (anchor.textContent ?? "").trim();
         if (!name) continue;
+
         const rowText = row.innerText ?? "";
+
+        // If a filter artist name was passed, only keep tracks that credit them.
+        // Matches against the row's text (which includes artist links beneath
+        // the track name for multi-artist tracks).
+        if (filterName) {
+          const needle = filterName.toLowerCase();
+          const hay = rowText.toLowerCase();
+          if (!hay.includes(needle)) continue;
+        }
+
         const withoutName = name ? rowText.split(name).join(" ") : rowText;
         const streamsText = biggestNumber(withoutName);
         tracks.push({
@@ -471,7 +488,7 @@ async function scrapeAlbumPage(
       }
 
       return { tracks };
-    });
+    }, filterArtistName ?? null);
 
     return {
       spotifyId: albumId,
