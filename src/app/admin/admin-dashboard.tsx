@@ -46,6 +46,7 @@ export function AdminDashboard({
   initialSocials,
   initialShowListenerChart,
   initialSectionOrder,
+  initialRosterDesignations,
   initialPress,
   lastRefreshedAt,
   session,
@@ -57,6 +58,7 @@ export function AdminDashboard({
   initialSocials: ArtistSocials;
   initialShowListenerChart: boolean;
   initialSectionOrder: SectionId[];
+  initialRosterDesignations: string[];
   initialPress: FeaturedItem[];
   lastRefreshedAt: string | null;
   session: {
@@ -92,6 +94,10 @@ export function AdminDashboard({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sectionOrder, setSectionOrder] = useState<SectionId[]>(initialSectionOrder);
+  const [designations, setDesignations] = useState<string[]>(
+    initialRosterDesignations ?? [],
+  );
+  const [newDesignation, setNewDesignation] = useState("");
   const [isAdding, startAdding] = useTransition();
   const [isRefreshing, startRefresh] = useTransition();
   const [isDeepRefreshing, startDeepRefresh] = useTransition();
@@ -285,6 +291,36 @@ export function AdminDashboard({
     startSavingSession(() => router.refresh());
   }
 
+  async function persistDesignations(next: string[]) {
+    setDesignations(next);
+    await fetch("/api/admin/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rosterDesignations: next }),
+    });
+    router.refresh();
+  }
+  async function addDesignation() {
+    const name = newDesignation.trim();
+    if (!name) return;
+    if (
+      designations.some((d) => d.toLowerCase() === name.toLowerCase())
+    )
+      return;
+    setNewDesignation("");
+    await persistDesignations([...designations, name]);
+  }
+  async function removeDesignation(name: string) {
+    await persistDesignations(designations.filter((d) => d !== name));
+  }
+  async function moveDesignation(idx: number, dir: -1 | 1) {
+    const next = [...designations];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    await persistDesignations(next);
+  }
+
   async function moveSection(index: number, dir: -1 | 1) {
     const next = [...sectionOrder];
     const target = index + dir;
@@ -406,7 +442,12 @@ export function AdminDashboard({
 
   async function saveArtist(
     id: string,
-    patch: { bio?: string; socials?: ArtistSocials; role?: string },
+    patch: {
+      bio?: string;
+      socials?: ArtistSocials;
+      role?: string;
+      designation?: string | null;
+    },
   ) {
     const res = await fetch("/api/admin/artists", {
       method: "PATCH",
@@ -426,6 +467,10 @@ export function AdminDashboard({
               bio: patch.bio ?? a.bio,
               socials: patch.socials ?? a.socials,
               role: patch.role ?? a.role,
+              designation:
+                patch.designation === undefined
+                  ? a.designation
+                  : patch.designation,
             }
           : a,
       ),
@@ -599,6 +644,87 @@ export function AdminDashboard({
           return (
         <>
         <div className="mt-5 border-t border-white/5 pt-5">
+          <div className="flex items-baseline justify-between mb-2">
+            <div className="text-[10px] uppercase tracking-widest text-white/40">
+              Roster designations (optional)
+            </div>
+            <span className="text-[10px] text-white/30">
+              {designations.length === 0
+                ? "Off — single roster"
+                : `${designations.length} group${designations.length === 1 ? "" : "s"}`}
+            </span>
+          </div>
+          <p className="text-xs text-white/40 mb-3">
+            Split the roster into labeled groups (e.g., Management, Distribution).
+            Assign each artist a designation in their row below. Empty = single
+            unified Roster.
+          </p>
+          {designations.length > 0 ? (
+            <ul className="flex flex-col gap-1 mb-2">
+              {designations.map((d, i) => (
+                <li
+                  key={d}
+                  className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+                >
+                  <span className="text-white">{d}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => moveDesignation(i, -1)}
+                      disabled={i === 0}
+                      className="w-6 h-6 rounded border border-white/10 text-white/60 hover:text-white hover:border-white/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                      aria-label="Move up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveDesignation(i, 1)}
+                      disabled={i === designations.length - 1}
+                      className="w-6 h-6 rounded border border-white/10 text-white/60 hover:text-white hover:border-white/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                      aria-label="Move down"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeDesignation(d)}
+                      className="w-6 h-6 rounded border border-white/10 text-red-400/70 hover:text-red-400 hover:border-red-400/40"
+                      aria-label="Remove"
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="flex gap-2">
+            <input
+              value={newDesignation}
+              onChange={(e) => setNewDesignation(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addDesignation();
+                }
+              }}
+              placeholder="Add a designation, e.g., Management"
+              className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+            />
+            <button
+              type="button"
+              onClick={addDesignation}
+              disabled={!newDesignation.trim()}
+              className="rounded-lg border border-white/15 px-3 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 border-t border-white/5 pt-5">
           <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
             Homepage section order
           </div>
@@ -770,6 +896,7 @@ export function AdminDashboard({
               <ArtistRow
                 key={a.id}
                 artist={a}
+                designations={designations}
                 expanded={editingArtistId === a.id}
                 onToggle={() =>
                   setEditingArtistId(editingArtistId === a.id ? null : a.id)
@@ -991,19 +1118,29 @@ function BulkAddArtists({
 
 function ArtistRow({
   artist,
+  designations,
   expanded,
   onToggle,
   onSave,
   onDelete,
 }: {
   artist: Artist;
+  designations: string[];
   expanded: boolean;
   onToggle: () => void;
-  onSave: (patch: { bio?: string; socials?: ArtistSocials; role?: string }) => Promise<boolean>;
+  onSave: (patch: {
+    bio?: string;
+    socials?: ArtistSocials;
+    role?: string;
+    designation?: string | null;
+  }) => Promise<boolean>;
   onDelete: () => void;
 }) {
   const [bio, setBio] = useState(artist.bio ?? "");
   const [role, setRole] = useState(artist.role ?? "");
+  const [designation, setDesignation] = useState<string | null>(
+    artist.designation ?? null,
+  );
   const [socials, setSocials] = useState<ArtistSocials>(
     (artist.socials ?? {}) as ArtistSocials,
   );
@@ -1012,7 +1149,7 @@ function ArtistRow({
 
   async function save() {
     setSaving(true);
-    const ok = await onSave({ bio, role, socials });
+    const ok = await onSave({ bio, role, socials, designation });
     setSaving(false);
     if (ok) {
       setSavedMsg("Saved");
@@ -1066,16 +1203,39 @@ function ArtistRow({
       </div>
       {expanded ? (
         <div className="px-4 py-4 bg-black/30 border-t border-white/5 flex flex-col gap-3">
-          <div>
-            <label className="text-[10px] uppercase tracking-widest text-white/40">
-              Role
-            </label>
-            <input
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              placeholder="e.g., Signed 2023 / Producer"
-              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-white/40">
+                Role
+              </label>
+              <input
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                placeholder="e.g., Signed 2023 / Producer"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+              />
+            </div>
+            {designations.length > 0 ? (
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-white/40">
+                  Designation
+                </label>
+                <select
+                  value={designation ?? ""}
+                  onChange={(e) =>
+                    setDesignation(e.target.value || null)
+                  }
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30"
+                >
+                  <option value="">— Unassigned —</option>
+                  {designations.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-widest text-white/40">

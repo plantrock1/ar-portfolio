@@ -136,6 +136,7 @@ const SocialsSchema = z
 const PatchBody = z.object({
   id: z.string().uuid(),
   role: z.string().trim().optional(),
+  designation: z.string().trim().max(60).nullable().optional(),
   displayOrder: z.number().int().optional(),
   hidden: z.boolean().optional(),
   bio: z.string().max(4000).optional(),

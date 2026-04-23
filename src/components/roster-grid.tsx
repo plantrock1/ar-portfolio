@@ -10,9 +10,11 @@ const LS_KEY = "ar-roster-density";
 export function RosterGrid({
   roster,
   sortBy,
+  designations,
 }: {
   roster: ArtistWithLatest[];
   sortBy: RosterSort;
+  designations: string[];
 }) {
   // Default to compact — denser grid works better on mobile and still reads
   // well on desktop. Viewer can flip to Large; choice persists via localStorage.
@@ -108,27 +110,104 @@ export function RosterGrid({
           </a>{" "}
           to add the first one.
         </div>
+      ) : designations.length === 0 ? (
+        <Grid artists={roster} compact={compact} />
       ) : (
-        <div
-          className={
-            compact
-              ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
-              : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
-          }
-        >
-          {roster.map((a) => (
-            <ArtistCard
-              key={a.id}
-              slug={a.slug}
-              name={a.name}
-              imageUrl={a.imageUrl}
-              role={a.role}
-              monthlyListeners={a.latest.monthlyListeners}
-              compact={compact}
-            />
-          ))}
-        </div>
+        <DesignationGroups
+          roster={roster}
+          designations={designations}
+          compact={compact}
+        />
       )}
     </>
+  );
+}
+
+function Grid({
+  artists,
+  compact,
+}: {
+  artists: ArtistWithLatest[];
+  compact: boolean;
+}) {
+  return (
+    <div
+      className={
+        compact
+          ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
+          : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
+      }
+    >
+      {artists.map((a) => (
+        <ArtistCard
+          key={a.id}
+          slug={a.slug}
+          name={a.name}
+          imageUrl={a.imageUrl}
+          role={a.role}
+          monthlyListeners={a.latest.monthlyListeners}
+          compact={compact}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DesignationGroups({
+  roster,
+  designations,
+  compact,
+}: {
+  roster: ArtistWithLatest[];
+  designations: string[];
+  compact: boolean;
+}) {
+  // Bucket artists. Preserve roster's incoming sort within each group.
+  const buckets = new Map<string, ArtistWithLatest[]>();
+  for (const d of designations) buckets.set(d, []);
+  const unassigned: ArtistWithLatest[] = [];
+  const knownLower = new Set(designations.map((d) => d.toLowerCase()));
+  for (const a of roster) {
+    const key = a.designation;
+    if (key && knownLower.has(key.toLowerCase())) {
+      // Re-resolve to the canonical casing from `designations`
+      const canonical = designations.find(
+        (d) => d.toLowerCase() === key.toLowerCase(),
+      )!;
+      buckets.get(canonical)!.push(a);
+    } else {
+      unassigned.push(a);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-12">
+      {designations.map((label) => {
+        const artists = buckets.get(label) ?? [];
+        if (artists.length === 0) return null;
+        return (
+          <div key={label}>
+            <h3 className="display text-xl md:text-2xl text-white/90 mb-5">
+              {label}
+              <span className="ml-3 text-xs uppercase tracking-widest text-white/30">
+                {artists.length}
+              </span>
+            </h3>
+            <Grid artists={artists} compact={compact} />
+          </div>
+        );
+      })}
+      {unassigned.length > 0 ? (
+        <div>
+          <h3 className="display text-xl md:text-2xl text-white/90 mb-5">
+            Other
+            <span className="ml-3 text-xs uppercase tracking-widest text-white/30">
+              {unassigned.length}
+            </span>
+          </h3>
+          <Grid artists={unassigned} compact={compact} />
+        </div>
+      ) : null}
+    </div>
   );
 }

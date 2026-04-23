@@ -39,6 +39,7 @@ export default async function AdminPage() {
         initialSocials={settings.socials}
         initialShowListenerChart={settings.showListenerChart}
         initialSectionOrder={settings.sectionOrder}
+        initialRosterDesignations={settings.rosterDesignations}
         initialPress={press.map((p) => ({
           ...p,
           addedAt: new Date(p.addedAt).toISOString(),

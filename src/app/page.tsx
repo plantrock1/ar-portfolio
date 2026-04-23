@@ -39,7 +39,11 @@ export default async function Home({
   const sections: Record<SectionId, React.ReactNode> = {
     roster: (
       <section className="pt-14 md:pt-20">
-        <RosterGrid roster={roster} sortBy={sortBy} />
+        <RosterGrid
+          roster={roster}
+          sortBy={sortBy}
+          designations={settings.rosterDesignations}
+        />
       </section>
     ),
     top_tracks:

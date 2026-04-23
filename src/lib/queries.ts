@@ -332,6 +332,7 @@ export async function getSiteSettings(): Promise<{
   socials: import("@/lib/db/schema").ArtistSocials;
   showListenerChart: boolean;
   sectionOrder: import("@/lib/db/schema").SectionId[];
+  rosterDesignations: string[];
 }> {
   const rows = await db
     .select()
@@ -345,6 +346,7 @@ export async function getSiteSettings(): Promise<{
       socials: {},
       showListenerChart: false,
       sectionOrder: DEFAULT_SECTION_ORDER,
+      rosterDesignations: [],
     };
   return {
     displayName: rows[0].displayName ?? "",
@@ -356,6 +358,7 @@ export async function getSiteSettings(): Promise<{
       (rows[0].sectionOrder?.length ?? 0) > 0
         ? rows[0].sectionOrder!
         : DEFAULT_SECTION_ORDER,
+    rosterDesignations: rows[0].rosterDesignations ?? [],
   };
 }
 

@@ -33,6 +33,10 @@ const BioPhoto = z
 const SECTION_IDS = ["roster", "top_tracks", "featured_media"] as const;
 const SectionOrderSchema = z.array(z.enum(SECTION_IDS)).length(3);
 
+const RosterDesignationsSchema = z
+  .array(z.string().trim().min(1).max(60))
+  .max(20);
+
 const Body = z
   .object({
     displayName: z.string().max(100).optional(),
@@ -41,6 +45,7 @@ const Body = z
     showListenerChart: z.boolean().optional(),
     socials: SocialsSchema.optional(),
     sectionOrder: SectionOrderSchema.optional(),
+    rosterDesignations: RosterDesignationsSchema.optional(),
   })
   .refine(
     (v) =>
@@ -49,7 +54,8 @@ const Body = z
       v.bioPhotoUrl !== undefined ||
       v.showListenerChart !== undefined ||
       v.socials !== undefined ||
-      v.sectionOrder !== undefined,
+      v.sectionOrder !== undefined ||
+      v.rosterDesignations !== undefined,
     { message: "no fields to update" },
   );
 
@@ -79,6 +85,20 @@ export async function POST(req: NextRequest) {
   if (cleanedSocials !== undefined) patch.socials = cleanedSocials;
   if (parsed.data.sectionOrder !== undefined)
     patch.sectionOrder = parsed.data.sectionOrder;
+  if (parsed.data.rosterDesignations !== undefined) {
+    // Dedupe (case-insensitive) while preserving first-occurrence order
+    const seen = new Set<string>();
+    const cleaned = parsed.data.rosterDesignations
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .filter((s) => {
+        const k = s.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    patch.rosterDesignations = cleaned;
+  }
 
   await db
     .insert(schema.siteSettings)

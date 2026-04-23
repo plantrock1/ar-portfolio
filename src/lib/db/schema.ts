@@ -30,6 +30,7 @@ export const artists = pgTable("artists", {
   imageUrl: text("image_url"),
   genres: text("genres").array().notNull().default([]),
   role: text("role"),
+  designation: text("designation"),
   bio: text("bio").notNull().default(""),
   socials: jsonb("socials").$type<ArtistSocials>().notNull().default({}),
   displayOrder: integer("display_order").notNull().default(0),
@@ -141,6 +142,10 @@ export const siteSettings = pgTable("site_settings", {
     .$type<SectionId[]>()
     .notNull()
     .default(["roster", "top_tracks", "featured_media"]),
+  rosterDesignations: jsonb("roster_designations")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
   adminPasswordHash: text("admin_password_hash"),
   spotifySpDc: text("spotify_sp_dc"),
   spotifySessionStatus: text("spotify_session_status").notNull().default("unknown"),
