@@ -1,0 +1,46 @@
+name: Deep Refresh — Aidan Rigberg
+
+on:
+  workflow_dispatch:
+
+  # Weekly — 2 hours after Alec (09:00 UTC) and 1 hour after Chase (10:00 UTC).
+  schedule:
+    - cron: "0 11 * * 0"
+
+jobs:
+  deep-refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Google Chrome
+        run: |
+          wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt-get update -q
+          sudo apt-get install -y /tmp/chrome.deb
+          google-chrome --version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run deep refresh
+        env:
+          # Shared Spotify app credentials
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          # Aidan-specific
+          DATABASE_URL: ${{ secrets.DATABASE_URL_AIDAN }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD_AIDAN }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET_AIDAN }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET_AIDAN }}
+          USE_LOCAL_CHROME: "1"
+        run: npx tsx scripts/run-deep-refresh.ts
