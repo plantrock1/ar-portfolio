@@ -1146,6 +1146,7 @@ function ArtistRow({
   );
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [inlineSaving, setInlineSaving] = useState(false);
 
   async function save() {
     setSaving(true);
@@ -1155,6 +1156,14 @@ function ArtistRow({
       setSavedMsg("Saved");
       setTimeout(() => setSavedMsg(null), 1500);
     }
+  }
+
+  // Inline designation change — no row-expand needed
+  async function changeDesignationInline(next: string | null) {
+    setDesignation(next); // optimistic
+    setInlineSaving(true);
+    await onSave({ designation: next });
+    setInlineSaving(false);
   }
 
   return (
@@ -1180,6 +1189,23 @@ function ArtistRow({
             {artist.role ?? "—"} · /{artist.slug}
           </div>
         </div>
+        {designations.length > 0 ? (
+          <select
+            value={designation ?? ""}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => changeDesignationInline(e.target.value || null)}
+            disabled={inlineSaving}
+            className="hidden sm:block text-xs rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:text-white focus:outline-none focus:border-white/30 disabled:opacity-50 max-w-[160px]"
+            title="Designation"
+          >
+            <option value="">— Unassigned —</option>
+            {designations.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <a
           href={`/artist/${artist.slug}`}
           target="_blank"
