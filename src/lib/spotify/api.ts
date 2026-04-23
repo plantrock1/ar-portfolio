@@ -30,15 +30,38 @@ export async function getAccessToken(): Promise<string> {
 }
 
 async function spotify<T>(path: string): Promise<T> {
-  const token = await getAccessToken();
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!res.ok) {
+  // Retry 429s with exponential backoff, respecting Retry-After if set.
+  // Also retries transient 5xx once. Everything else throws immediately.
+  const MAX_ATTEMPTS = 6;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    const token = await getAccessToken();
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (res.ok) return (await res.json()) as T;
+
+    if (res.status === 429) {
+      const headerWait = Number(res.headers.get("retry-after") ?? 0);
+      // Header is typically seconds. If missing, grow from ~1s → 16s.
+      const backoffMs = headerWait > 0
+        ? (headerWait + 1) * 1000
+        : Math.min(16_000, 1_000 * 2 ** attempt);
+      await new Promise((r) => setTimeout(r, backoffMs));
+      lastErr = new Error(`Spotify ${path} 429 (waited ${backoffMs}ms)`);
+      continue;
+    }
+
+    if (res.status >= 500 && attempt < MAX_ATTEMPTS - 1) {
+      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+      lastErr = new Error(`Spotify ${path} ${res.status}`);
+      continue;
+    }
+
     throw new Error(`Spotify ${path} ${res.status}: ${await res.text()}`);
   }
-  return (await res.json()) as T;
+  throw lastErr ?? new Error(`Spotify ${path}: retries exhausted`);
 }
 
 export type SpotifyArtist = {

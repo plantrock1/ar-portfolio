@@ -63,10 +63,30 @@ export async function runRefresh(): Promise<RefreshReport> {
     await updateRun({ phase: "artists", message: "Scraping artist pages…" });
 
     const spotifyIds = roster.map((a) => a.spotifyId);
-    const scraped = await scrapeArtistPages(spotifyIds, {
+    let scraped = await scrapeArtistPages(spotifyIds, {
       spDc: session.spDc,
       concurrency: 3,
     });
+
+    // Retry the ones that came back empty — catches flaky page loads and
+    // Spotify rate-limit hiccups. Small delay to let any rate-limit cool off.
+    const misses = scraped.filter((s) => s.monthlyListeners === null);
+    if (misses.length > 0) {
+      await updateRun({
+        message: `Retrying ${misses.length} missed artist${misses.length === 1 ? "" : "s"}…`,
+      });
+      await new Promise((r) => setTimeout(r, 2000));
+      const retryIds = misses.map((m) => m.spotifyId);
+      const retried = await scrapeArtistPages(retryIds, {
+        spDc: session.spDc,
+        concurrency: 2,
+      });
+      const retriedById = new Map(retried.map((s) => [s.spotifyId, s]));
+      scraped = scraped.map((s) => {
+        const r = retriedById.get(s.spotifyId);
+        return r && r.monthlyListeners !== null ? r : s;
+      });
+    }
     const byId = new Map(scraped.map((s) => [s.spotifyId, s]));
 
     let scrapeHits = 0;

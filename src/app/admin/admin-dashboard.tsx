@@ -858,7 +858,7 @@ export function AdminDashboard({
               onClick={refreshNow}
               disabled={isRefreshing || isDeepRefreshing}
               className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
-              title="Re-scrapes artist pages only — monthly listeners + top tracks. ~20s."
+              title="Fast update (~30s): refreshes monthly listeners + top 5 stream counts per artist."
             >
               {isRefreshing ? "Refreshing…" : "Refresh"}
             </button>
@@ -872,12 +872,33 @@ export function AdminDashboard({
               className="rounded-lg bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
               title={
                 sessionState.hasCookie
-                  ? "Visits every album page for every artist — full stream counts. Several minutes."
+                  ? "Full update (15 min–1 hr): visits every album + every track page to sync complete lifetime stream totals."
                   : "Requires sp_dc session cookie (see above)"
               }
             >
               {isDeepRefreshing ? "Deep refresh…" : "Deep refresh"}
             </button>
+          </div>
+        </div>
+        <div className="mt-4 grid sm:grid-cols-2 gap-3 text-xs text-white/50 leading-relaxed">
+          <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+            <div className="text-white/80 font-medium mb-1">Refresh</div>
+            <div>
+              Fast update. Scrapes each artist&apos;s Spotify page to update
+              monthly listeners and stream counts for their top 5 tracks.
+              Takes about 30 seconds. Runs automatically every day.
+            </div>
+          </div>
+          <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+            <div className="text-white/80 font-medium mb-1">Deep refresh</div>
+            <div>
+              Full update. For every artist, lists every album (via Spotify
+              API), scrapes each album for its tracks, then visits every
+              individual track page to read its lifetime stream count. Takes
+              15 min for a small roster, longer for big ones. Runs
+              automatically every Sunday morning via GitHub; click here to
+              run manually anytime.
+            </div>
           </div>
         </div>
       </section>
@@ -1522,8 +1543,14 @@ function FeaturedSection({
 }
 
 function ProgressBar({ run }: { run: RefreshRun }) {
-  // For deep runs, the same counter is reused across phases — label it
-  // based on which phase we're in (albums vs. individual tracks).
+  // Force re-render every second so the elapsed-time readout ticks live.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (run.status !== "running") return;
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [run.status]);
+
   const isTrackPhase = run.phase === "tracks";
   const unit = run.kind === "deep"
     ? isTrackPhase ? "tracks" : "albums"
@@ -1533,16 +1560,42 @@ function ProgressBar({ run }: { run: RefreshRun }) {
     : Math.max(run.artistTotal, 1);
   const done = run.kind === "deep" ? run.albumsScraped : run.artistIndex;
   const pct = Math.min(100, Math.round((done / denom) * 100));
+
+  const elapsedSec = Math.max(
+    0,
+    Math.round((Date.now() - new Date(run.startedAt).getTime()) / 1000),
+  );
+  // Rough ETA: assume remaining items take same avg as completed ones
+  const etaSec =
+    done > 0 && denom > 0
+      ? Math.max(0, Math.round((elapsedSec / done) * (denom - done)))
+      : null;
+
+  const phaseBlurb =
+    run.phase === "session"
+      ? "Checking your Spotify session cookie"
+      : run.phase === "artists"
+        ? "Reading each artist's Spotify page for monthly listeners + top 5 stream counts"
+        : run.phase === "discovery"
+          ? "Asking Spotify's API for each artist's full album list"
+          : run.phase === "albums"
+            ? "Loading every album page to find every track"
+            : run.phase === "isrc"
+              ? "Fetching ISRC codes so re-releases can be deduped"
+              : run.phase === "tracks"
+                ? "Visiting each individual track page to read its lifetime stream count"
+                : null;
+
   return (
     <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-4">
-      <div className="flex items-baseline justify-between mb-2">
-        <div className="text-sm text-white">
+      <div className="flex items-baseline justify-between mb-2 gap-3 flex-wrap">
+        <div className="text-sm text-white min-w-0">
           <span className="text-white/50">
             {run.kind === "deep" ? "Deep refresh" : "Refresh"} ·{" "}
           </span>
           {run.message ?? run.phase ?? "Working…"}
         </div>
-        <div className="text-xs text-white/50 tabular-nums">
+        <div className="text-xs text-white/50 tabular-nums shrink-0">
           {run.kind === "deep"
             ? `${run.albumsScraped}/${run.albumsTotal} ${unit} · ${run.tracksUpserted} upserted`
             : `${run.artistIndex}/${run.artistTotal} ${unit} · ${run.tracksUpserted} tracks`}
@@ -1554,8 +1607,29 @@ function ProgressBar({ run }: { run: RefreshRun }) {
           style={{ width: `${pct}%` }}
         />
       </div>
+      <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-white/40 flex-wrap">
+        <div className="min-w-0">
+          {phaseBlurb ? <span>{phaseBlurb}</span> : null}
+        </div>
+        <div className="tabular-nums shrink-0">
+          <span>Elapsed {formatDuration(elapsedSec)}</span>
+          {etaSec !== null && run.status === "running" ? (
+            <span> · ~{formatDuration(etaSec)} remaining</span>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
+}
+
+function formatDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  if (m < 60) return s === 0 ? `${m}m` : `${m}m ${s}s`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return mm === 0 ? `${h}h` : `${h}h ${mm}m`;
 }
 
 function LastRunLabel({ run }: { run: RefreshRun }) {
