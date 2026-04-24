@@ -223,24 +223,54 @@ export function AdminDashboard({
     setMessage(null);
     setRun(optimisticRun("shallow"));
     startPolling();
-    const res = await fetch("/api/cron/refresh");
-    const data = await parseResponse(res);
-    stopPolling();
-    // Final poll to pick up completion state
+
+    // Chunked client loop: each call processes 5 artists at a time, so we
+    // stay comfortably under Vercel's 60-second function timeout no matter
+    // how large the roster is. Progress bar updates via the status poller
+    // while each chunk runs.
+    const CHUNK = 5;
+    let offset = 0;
+    let totalArtists = 0;
+    let totalHits = 0;
+    let totalMisses = 0;
+    let totalTracks = 0;
+    const runStart = Date.now();
+    try {
+      while (true) {
+        const res = await fetch(
+          `/api/cron/refresh?offset=${offset}&limit=${CHUNK}`,
+        );
+        const data = await parseResponse(res);
+        if (!res.ok) {
+          setError(data.error ?? "Refresh failed");
+          stopPolling();
+          return;
+        }
+        totalArtists += data.artistsRefreshed ?? 0;
+        totalHits += data.scrapeHits ?? 0;
+        totalMisses += data.scrapeMisses ?? 0;
+        totalTracks += data.tracksRefreshed ?? 0;
+        if (data.nextOffset === null || data.nextOffset === undefined) break;
+        offset = data.nextOffset;
+      }
+    } finally {
+      stopPolling();
+    }
+
+    // Final status poll to pick up the completion state.
     const final = await fetch("/api/admin/refresh-status", {
       cache: "no-store",
     });
     if (final.ok) setRun((await final.json()).run ?? null);
-    if (!res.ok) {
-      setError(data.error ?? "Refresh failed");
-      return;
-    }
+
+    const elapsedSec = Math.round((Date.now() - runStart) / 1000);
     setMessage(
-      `Refreshed ${data.artistsRefreshed} artists · ${data.scrapeHits}/${
-        data.scrapeHits + data.scrapeMisses
-      } monthly listener scrapes succeeded · ${Math.round(data.durationMs / 1000)}s`,
+      `Refreshed ${totalArtists} artists · ${totalHits}/${
+        totalHits + totalMisses
+      } monthly listener scrapes succeeded · ${elapsedSec}s`,
     );
     startRefresh(() => router.refresh());
+    void totalTracks;
   }
 
   async function deepRefresh() {

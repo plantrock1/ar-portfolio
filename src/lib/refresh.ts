@@ -33,20 +33,39 @@ export type RefreshReport = {
 /**
  * Shallow refresh — artist pages only. Fast daily pass for monthly listeners
  * and top-5 stream counts.
+ *
+ * Supports chunked invocation to fit inside Vercel's 60-second function
+ * timeout: caller passes {offset, limit} and we only process that slice.
+ * When called without opts we process everything in a single call (that's
+ * the scheduled-cron path — large rosters may partial-complete if they
+ * exceed the timeout, which is acceptable since the next day's cron picks
+ * up where this one left off).
  */
-export async function runRefresh(): Promise<RefreshReport> {
+export async function runRefresh(
+  opts: { offset?: number; limit?: number } = {},
+): Promise<
+  RefreshReport & { totalInRoster: number; nextOffset: number | null }
+> {
   const startedAt = Date.now();
   const session = await getSpotifySession();
 
-  const roster = await db
+  const fullRoster = await db
     .select()
     .from(schema.artists)
     .where(eq(schema.artists.hidden, false));
 
-  await beginRun("shallow", roster.length);
+  const offset = Math.max(0, opts.offset ?? 0);
+  const limit =
+    opts.limit !== undefined ? Math.max(1, opts.limit) : fullRoster.length;
+  const roster = fullRoster.slice(offset, offset + limit);
+  const isFirstChunk = offset === 0;
+  const isLastChunk = offset + roster.length >= fullRoster.length;
+  const nextOffset = isLastChunk ? null : offset + roster.length;
+
+  if (isFirstChunk) await beginRun("shallow", fullRoster.length);
 
   if (roster.length === 0) {
-    await completeRun("done");
+    if (isLastChunk) await completeRun("done");
     return {
       mode: "shallow",
       artistsRefreshed: 0,
@@ -56,6 +75,8 @@ export async function runRefresh(): Promise<RefreshReport> {
       scrapeMisses: 0,
       durationMs: Date.now() - startedAt,
       sessionStatus: session.spDc ? session.status : "absent",
+      totalInRoster: fullRoster.length,
+      nextOffset,
     };
   }
 
@@ -75,12 +96,13 @@ export async function runRefresh(): Promise<RefreshReport> {
       onOne: async (done, total, r) => {
         await updateRun({
           phase: "artists",
-          artistIndex: done,
-          artistTotal: total,
+          // In chunked mode the overall progress is offset + done-in-chunk
+          artistIndex: offset + done,
+          artistTotal: fullRoster.length,
           message:
             r.monthlyListeners !== null
-              ? `Scraped ${done}/${total} · last: ${r.spotifyId.slice(0, 8)}…`
-              : `Scraped ${done}/${total} (miss on ${r.spotifyId.slice(0, 8)}…)`,
+              ? `Scraped ${offset + done}/${fullRoster.length} · last: ${r.spotifyId.slice(0, 8)}…`
+              : `Scraped ${offset + done}/${fullRoster.length} (miss on ${r.spotifyId.slice(0, 8)}…)`,
         });
       },
     });
@@ -145,7 +167,7 @@ export async function runRefresh(): Promise<RefreshReport> {
       await updateRun({ tracksUpserted });
     }
 
-    await completeRun("done");
+    if (isLastChunk) await completeRun("done");
     return {
       mode: "shallow",
       artistsRefreshed: roster.length,
@@ -155,6 +177,8 @@ export async function runRefresh(): Promise<RefreshReport> {
       scrapeMisses,
       durationMs: Date.now() - startedAt,
       sessionStatus: session.spDc ? session.status : "absent",
+      totalInRoster: fullRoster.length,
+      nextOffset,
     };
   } catch (e) {
     await completeRun(
@@ -164,6 +188,7 @@ export async function runRefresh(): Promise<RefreshReport> {
     throw e;
   }
 }
+
 
 /**
  * Deep refresh — full discography pull. Uses Spotify API for canonical album
