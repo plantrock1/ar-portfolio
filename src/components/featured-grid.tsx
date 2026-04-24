@@ -66,8 +66,8 @@ export function FeaturedGrid({ items }: { items: Item[] }) {
       <div
         className={
           compact
-            ? "grid items-start grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"
-            : "grid items-start grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
+            ? "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"
+            : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
         }
       >
         {items.map((item) => (
@@ -76,7 +76,7 @@ export function FeaturedGrid({ items }: { items: Item[] }) {
             href={item.url}
             target="_blank"
             rel="noreferrer"
-            className="group flex flex-col self-start overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] transition hover:border-white/15 hover:bg-white/[0.04]"
+            className="group flex h-full flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] transition hover:border-white/15 hover:bg-white/[0.04]"
           >
             <div className="relative w-full bg-neutral-900" style={{ aspectRatio: "16 / 9" }}>
               {item.imageUrl ? (
@@ -91,13 +91,25 @@ export function FeaturedGrid({ items }: { items: Item[] }) {
               )}
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             </div>
-            <div className={compact ? "p-2.5 flex flex-col gap-0.5" : "p-4 flex flex-col gap-1"}>
+            <div
+              className={
+                compact
+                  ? "p-2.5 flex flex-col gap-0.5 flex-1 min-h-[52px]"
+                  : "p-4 flex flex-col gap-1 flex-1 min-h-[72px]"
+              }
+            >
               {item.source ? (
                 <div className="text-[10px] uppercase tracking-widest text-white/40">
                   {item.source}
                 </div>
               ) : null}
-              <div className={compact ? "text-white text-xs leading-snug line-clamp-2" : "text-white text-sm leading-snug line-clamp-3"}>
+              <div
+                className={
+                  compact
+                    ? "text-white text-xs leading-snug line-clamp-2"
+                    : "text-white text-sm leading-snug line-clamp-2"
+                }
+              >
                 {item.title}
               </div>
             </div>

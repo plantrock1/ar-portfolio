@@ -69,6 +69,56 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ item: inserted });
 }
 
+const PatchBody = z.object({
+  id: z.string().uuid(),
+  title: z.string().trim().min(1).max(200).optional(),
+  url: z.string().trim().url().max(600).optional(),
+  imageUrl: DataUrlOrHttp.optional().or(z.null()),
+  source: z.string().trim().max(80).optional().or(z.literal("")),
+});
+
+export async function PATCH(req: NextRequest) {
+  if (!(await isAdmin())) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const parsed = PatchBody.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "bad request" },
+      { status: 400 },
+    );
+  }
+  const { id, title, url, imageUrl, source } = parsed.data;
+  const patch: Record<string, unknown> = {};
+  if (title !== undefined) patch.title = title;
+  if (url !== undefined) patch.url = url;
+  if (imageUrl !== undefined) {
+    // Empty string or explicit null → clear image; any valid URL/data →
+    // set. If the user is clearing image AND the URL is a YouTube link,
+    // re-derive a YouTube thumbnail automatically.
+    if (!imageUrl || imageUrl === "") {
+      const derived = url ? await resolveImage(url) : null;
+      patch.imageUrl = derived ?? null;
+    } else {
+      patch.imageUrl = imageUrl;
+    }
+  }
+  if (source !== undefined) patch.source = source.trim() || null;
+
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ ok: true });
+  }
+  const [updated] = await db
+    .update(schema.featuredItems)
+    .set(patch)
+    .where(eq(schema.featuredItems.id, id))
+    .returning();
+  if (!updated) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  return NextResponse.json({ item: updated });
+}
+
 const DeleteBody = z.object({ id: z.string().uuid() });
 
 export async function DELETE(req: NextRequest) {

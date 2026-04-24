@@ -534,6 +534,30 @@ export function AdminDashboard({
     router.refresh();
   }
 
+  async function editFeatured(
+    id: string,
+    patch: {
+      title?: string;
+      url?: string;
+      source?: string;
+      imageUrl?: string | null;
+    },
+  ) {
+    const res = await fetch("/api/admin/featured", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...patch }),
+    });
+    const data = await parseResponse(res);
+    if (!res.ok) {
+      setError(data.error ?? "Failed to save changes");
+      return false;
+    }
+    setPress((xs) => xs.map((x) => (x.id === id ? { ...x, ...data.item } : x)));
+    router.refresh();
+    return true;
+  }
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 pt-12 pb-20">
       <div className="flex items-center justify-between mb-10">
@@ -1065,6 +1089,7 @@ export function AdminDashboard({
         <FeaturedSection
           items={press}
           onAdd={addFeatured}
+          onEdit={editFeatured}
           onRemove={removeFeatured}
         />
       </div>
@@ -1476,6 +1501,7 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB
 function FeaturedSection({
   items,
   onAdd,
+  onEdit,
   onRemove,
 }: {
   items: FeaturedItem[];
@@ -1485,8 +1511,18 @@ function FeaturedSection({
     imageUrl?: string;
     source?: string;
   }) => Promise<boolean>;
+  onEdit: (
+    id: string,
+    patch: {
+      title?: string;
+      url?: string;
+      source?: string;
+      imageUrl?: string | null;
+    },
+  ) => Promise<boolean>;
   onRemove: (id: string) => void;
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [t, setT] = useState("");
   const [u, setU] = useState("");
   const [img, setImg] = useState(""); // data: URL or http URL
@@ -1630,46 +1666,251 @@ function FeaturedSection({
       ) : (
         <ul className="mt-4 divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
           {items.map((item) => (
-            <li
+            <FeaturedItemRow
               key={item.id}
-              className="flex items-center gap-4 px-3 py-2 hover:bg-white/[0.02]"
-            >
-              {item.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={item.imageUrl}
-                  alt={item.title}
-                  className="rounded object-cover w-16 h-10"
-                />
-              ) : (
-                <div className="w-16 h-10 rounded bg-neutral-800" />
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="text-white text-sm truncate">{item.title}</div>
-                <div className="text-xs text-white/40 truncate">
-                  {item.source ? `${item.source} · ` : ""}
-                  {item.url}
-                </div>
-              </div>
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-white/40 hover:text-white"
-              >
-                Open
-              </a>
-              <button
-                onClick={() => onRemove(item.id)}
-                className="text-xs text-red-400/70 hover:text-red-400 px-2"
-              >
-                Remove
-              </button>
-            </li>
+              item={item}
+              editing={editingId === item.id}
+              onToggleEdit={() =>
+                setEditingId(editingId === item.id ? null : item.id)
+              }
+              onEdit={onEdit}
+              onRemove={onRemove}
+            />
           ))}
         </ul>
       )}
     </section>
+  );
+}
+
+function FeaturedItemRow({
+  item,
+  editing,
+  onToggleEdit,
+  onEdit,
+  onRemove,
+}: {
+  item: FeaturedItem;
+  editing: boolean;
+  onToggleEdit: () => void;
+  onEdit: (
+    id: string,
+    patch: {
+      title?: string;
+      url?: string;
+      source?: string;
+      imageUrl?: string | null;
+    },
+  ) => Promise<boolean>;
+  onRemove: (id: string) => void;
+}) {
+  const [title, setTitle] = useState(item.title);
+  const [url, setUrl] = useState(item.url);
+  const [source, setSource] = useState(item.source ?? "");
+  const [img, setImg] = useState(item.imageUrl ?? "");
+  const [imgName, setImgName] = useState<string | null>(null);
+  const [imgError, setImgError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Keep local form state in sync when the parent prop updates (e.g., after
+  // saving, or switching to a different item).
+  useEffect(() => {
+    setTitle(item.title);
+    setUrl(item.url);
+    setSource(item.source ?? "");
+    setImg(item.imageUrl ?? "");
+    setImgName(null);
+    setImgError(null);
+  }, [item.id, item.title, item.url, item.source, item.imageUrl]);
+
+  async function pickFile(file: File) {
+    setImgError(null);
+    if (!file.type.startsWith("image/")) {
+      setImgError("Not an image");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImgError("Image over 4MB — try a smaller file");
+      return;
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(file);
+    });
+    setImg(dataUrl);
+    setImgName(file.name);
+  }
+
+  async function save() {
+    setSaving(true);
+    const ok = await onEdit(item.id, {
+      title,
+      url,
+      source,
+      imageUrl: img === (item.imageUrl ?? "") ? undefined : img || null,
+    });
+    setSaving(false);
+    if (ok) onToggleEdit();
+  }
+
+  return (
+    <li className="flex flex-col">
+      <div className="flex items-center gap-4 px-3 py-2 hover:bg-white/[0.02]">
+        {item.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.imageUrl}
+            alt={item.title}
+            className="rounded object-cover w-16 h-10"
+          />
+        ) : (
+          <div className="w-16 h-10 rounded bg-neutral-800" />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="text-white text-sm truncate">{item.title}</div>
+          <div className="text-xs text-white/40 truncate">
+            {item.source ? `${item.source} · ` : ""}
+            {item.url}
+          </div>
+        </div>
+        <a
+          href={item.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs text-white/40 hover:text-white"
+        >
+          Open
+        </a>
+        <button
+          onClick={onToggleEdit}
+          className="text-xs text-white/60 hover:text-white px-2"
+        >
+          {editing ? "Close" : "Edit"}
+        </button>
+        <button
+          onClick={() => onRemove(item.id)}
+          className="text-xs text-red-400/70 hover:text-red-400 px-2"
+        >
+          Remove
+        </button>
+      </div>
+      {editing ? (
+        <div className="px-4 py-4 bg-black/30 border-t border-white/5 flex flex-col gap-3">
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-white/40">
+                Title
+              </label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-white/40">
+                Source (optional)
+              </label>
+              <input
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                placeholder="e.g., Rolling Stone"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-white/40">
+              Link URL
+            </label>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-white/40">
+              Image
+            </label>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              {img ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={img}
+                  alt="current"
+                  className="rounded object-cover w-20 h-12"
+                />
+              ) : (
+                <div className="w-20 h-12 rounded bg-neutral-800" />
+              )}
+              <label className="inline-flex items-center cursor-pointer text-xs text-white/60 hover:text-white">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) pickFile(f);
+                  }}
+                />
+                <span className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5">
+                  Replace image
+                </span>
+              </label>
+              <span className="text-xs text-white/40">or</span>
+              <input
+                value={img.startsWith("data:") ? "" : img}
+                onChange={(e) => {
+                  setImg(e.target.value);
+                  setImgName(null);
+                }}
+                placeholder="Paste image URL"
+                className="flex-1 min-w-[200px] rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+              />
+              {img ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImg("");
+                    setImgName(null);
+                  }}
+                  className="text-xs text-red-400/70 hover:text-red-400"
+                  title="Clear image (YouTube URLs will auto-fetch a thumbnail)"
+                >
+                  Clear
+                </button>
+              ) : null}
+              {imgName ? (
+                <span className="text-xs text-green-400">
+                  ✓ {imgName}
+                </span>
+              ) : null}
+              {imgError ? (
+                <span className="text-xs text-red-400">{imgError}</span>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              onClick={onToggleEdit}
+              className="rounded-lg border border-white/15 px-3 py-2 text-xs text-white/70 hover:text-white hover:bg-white/5"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={saving || !title.trim() || !url.trim()}
+              className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </li>
   );
 }
 
