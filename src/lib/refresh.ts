@@ -227,6 +227,147 @@ export async function runRefresh(
 
 
 /**
+ * Exhaustive shallow refresh — runs multiple patient passes until every
+ * artist has been successfully scraped (or we hit the max-pass ceiling).
+ * Designed for GitHub Actions runners where there's no 60-second timeout:
+ * we can afford long listener-wait timeouts and serial retries.
+ */
+export async function runShallowRefreshFull(): Promise<RefreshReport> {
+  const startedAt = Date.now();
+  const session = await getSpotifySession();
+
+  const roster = await db
+    .select()
+    .from(schema.artists)
+    .where(eq(schema.artists.hidden, false));
+
+  await beginRun("shallow", roster.length);
+
+  if (roster.length === 0) {
+    await completeRun("done");
+    return {
+      mode: "shallow",
+      artistsRefreshed: 0,
+      tracksRefreshed: 0,
+      albumsScraped: 0,
+      scrapeHits: 0,
+      scrapeMisses: 0,
+      durationMs: Date.now() - startedAt,
+      sessionStatus: session.spDc ? session.status : "absent",
+    };
+  }
+
+  try {
+    // Collect the best result we've seen per artist. Multiple passes with
+    // progressively patient settings — if pass N lands all artists, later
+    // passes have nothing to do. Realistically expect ~95%+ on pass 1,
+    // 99%+ on pass 2, 100% on pass 3 on a cooperative network.
+    const bestResult = new Map<string, import("@/lib/spotify/scrape").ScrapedArtistPage>();
+    let remaining = roster.map((a) => a.spotifyId);
+
+    const passes: { concurrency: number; listenerTimeoutMs: number; pauseMs: number }[] = [
+      { concurrency: 3, listenerTimeoutMs: 10_000, pauseMs: 0 },
+      { concurrency: 2, listenerTimeoutMs: 15_000, pauseMs: 5_000 },
+      { concurrency: 1, listenerTimeoutMs: 20_000, pauseMs: 15_000 },
+    ];
+
+    for (let i = 0; i < passes.length && remaining.length > 0; i += 1) {
+      const { concurrency, listenerTimeoutMs, pauseMs } = passes[i];
+      if (pauseMs > 0) {
+        await updateRun({
+          phase: "artists",
+          message: `Cooling off ${Math.round(pauseMs / 1000)}s before pass ${i + 1}…`,
+        });
+        await new Promise((r) => setTimeout(r, pauseMs));
+      }
+      await updateRun({
+        phase: "artists",
+        message: `Pass ${i + 1}: scraping ${remaining.length} artist${remaining.length === 1 ? "" : "s"} (concurrency ${concurrency})`,
+      });
+
+      const passResults = await scrapeArtistPages(remaining, {
+        spDc: session.spDc,
+        concurrency,
+        skipAlbums: true,
+        listenerTimeoutMs,
+        onOne: async (done, total, r) => {
+          if (await isCancelRequested()) throw new CancelledError();
+          if (r.monthlyListeners !== null) bestResult.set(r.spotifyId, r);
+          const landedSoFar = bestResult.size;
+          await updateRun({
+            phase: "artists",
+            artistIndex: landedSoFar,
+            artistTotal: roster.length,
+            message: `Pass ${i + 1} · ${done}/${total} · ${landedSoFar}/${roster.length} landed`,
+          });
+        },
+      });
+
+      // Next pass only retries the ones we haven't landed yet.
+      const landedIds = new Set(bestResult.keys());
+      remaining = passResults
+        .map((r) => r.spotifyId)
+        .filter((id) => !landedIds.has(id));
+    }
+
+    // Persist everything we got across all passes.
+    let scrapeHits = 0;
+    let tracksUpserted = 0;
+    for (const row of roster) {
+      const s = bestResult.get(row.spotifyId);
+      if (!s) continue;
+      scrapeHits += 1;
+      await db.insert(schema.artistSnapshots).values({
+        artistId: row.id,
+        followers: null,
+        monthlyListeners: s.monthlyListeners,
+        popularity: null,
+      });
+      for (const t of s.tracks) {
+        try {
+          await upsertTrack(row.id, t);
+          tracksUpserted += 1;
+        } catch (e) {
+          console.error(`[full-shallow] track upsert failed ${t.spotifyId}:`, e);
+        }
+      }
+    }
+    const scrapeMisses = roster.length - scrapeHits;
+
+    await completeRun("done");
+    return {
+      mode: "shallow",
+      artistsRefreshed: roster.length,
+      tracksRefreshed: tracksUpserted,
+      albumsScraped: 0,
+      scrapeHits,
+      scrapeMisses,
+      durationMs: Date.now() - startedAt,
+      sessionStatus: session.spDc ? session.status : "absent",
+    };
+  } catch (e) {
+    if (e instanceof CancelledError) {
+      await completeRun("cancelled");
+      return {
+        mode: "shallow",
+        artistsRefreshed: 0,
+        tracksRefreshed: 0,
+        albumsScraped: 0,
+        scrapeHits: 0,
+        scrapeMisses: 0,
+        durationMs: Date.now() - startedAt,
+        sessionStatus: session.spDc ? session.status : "absent",
+      };
+    }
+    await completeRun(
+      "failed",
+      e instanceof Error ? e.message : String(e),
+    );
+    throw e;
+  }
+}
+
+/**
  * Deep refresh — full discography pull. Uses Spotify API for canonical album
  * list (filtered to albums the artist actually owns) + scrapes each album page
  * with the session cookie to extract stream counts.
