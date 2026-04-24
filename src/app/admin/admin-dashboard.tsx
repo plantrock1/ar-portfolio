@@ -228,7 +228,7 @@ export function AdminDashboard({
     // stay comfortably under Vercel's 60-second function timeout no matter
     // how large the roster is. Progress bar updates via the status poller
     // while each chunk runs.
-    const CHUNK = 5;
+    const CHUNK = 4;
     let offset = 0;
     let totalArtists = 0;
     let totalHits = 0;
@@ -264,17 +264,27 @@ export function AdminDashboard({
     if (final.ok) setRun((await final.json()).run ?? null);
 
     const elapsedSec = Math.round((Date.now() - runStart) / 1000);
-    const missText =
-      totalMisses > 0
-        ? ` · ${totalMisses} artist${totalMisses === 1 ? "" : "s"} kept their previous value (page load timeout)`
-        : "";
-    setMessage(
-      `Refreshed ${totalArtists} artists · ${totalHits}/${
-        totalHits + totalMisses
-      } succeeded · ${elapsedSec}s${missText}`,
-    );
+    if (cancelled) {
+      setMessage(`Refresh stopped after ${elapsedSec}s · ${totalArtists} artists processed`);
+    } else {
+      const missText =
+        totalMisses > 0
+          ? ` · ${totalMisses} artist${totalMisses === 1 ? "" : "s"} kept their previous value (page load timeout)`
+          : "";
+      setMessage(
+        `Refreshed ${totalArtists} artists · ${totalHits}/${
+          totalHits + totalMisses
+        } succeeded · ${elapsedSec}s${missText}`,
+      );
+    }
     startRefresh(() => router.refresh());
-    void totalTracks;
+  }
+
+  async function cancelRunningRefresh() {
+    // Server-side: tells the deep-refresh loop (if any) to exit at next
+    // checkpoint. Also bails out of the in-flight shallow fetch immediately.
+    await fetch("/api/admin/refresh-cancel", { method: "POST" });
+    shallowAbortRef.current?.abort();
   }
 
   async function deepRefresh() {
@@ -888,6 +898,15 @@ export function AdminDashboard({
             ) : null}
           </div>
           <div className="flex gap-2 shrink-0">
+            {run && run.status === "running" ? (
+              <button
+                onClick={cancelRunningRefresh}
+                className="rounded-lg border border-red-400/30 bg-red-500/10 px-4 py-2 text-sm text-red-300 hover:bg-red-500/20 hover:text-red-200"
+                title="Stop the refresh at the next safe checkpoint (usually within 5–10s)."
+              >
+                Stop
+              </button>
+            ) : null}
             <button
               onClick={refreshNow}
               disabled={isRefreshing || isDeepRefreshing}

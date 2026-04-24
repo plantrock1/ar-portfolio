@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 
 export type RefreshStatus = {
   kind: "shallow" | "deep";
-  status: "idle" | "running" | "done" | "failed";
+  status: "idle" | "running" | "done" | "failed" | "cancelled";
   phase: string | null;
   message: string | null;
   artistIndex: number;
@@ -14,6 +14,7 @@ export type RefreshStatus = {
   startedAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
+  cancelRequested: boolean;
   error: string | null;
 };
 
@@ -34,6 +35,7 @@ export async function beginRun(kind: "shallow" | "deep", artistTotal: number) {
       startedAt: new Date(),
       updatedAt: new Date(),
       completedAt: null,
+      cancelRequestedAt: null,
       error: null,
     })
     .onConflictDoUpdate({
@@ -51,9 +53,27 @@ export async function beginRun(kind: "shallow" | "deep", artistTotal: number) {
         startedAt: sql`now()`,
         updatedAt: sql`now()`,
         completedAt: null,
+        cancelRequestedAt: null,
         error: null,
       },
     });
+}
+
+/** Call from long-running refresh loops to check if user hit Stop. */
+export async function isCancelRequested(): Promise<boolean> {
+  const rows = await db
+    .select({ req: schema.refreshRuns.cancelRequestedAt })
+    .from(schema.refreshRuns)
+    .where(eq(schema.refreshRuns.id, "current"));
+  return !!rows[0]?.req;
+}
+
+/** Flag the current run for cancellation. Long loops poll and exit. */
+export async function requestCancel() {
+  await db
+    .update(schema.refreshRuns)
+    .set({ cancelRequestedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(eq(schema.refreshRuns.id, "current"));
 }
 
 export async function updateRun(fields: Partial<RefreshStatus>) {
@@ -123,6 +143,7 @@ export async function getCurrentRun(): Promise<RefreshStatus | null> {
     startedAt: new Date(r.startedAt),
     updatedAt: new Date(r.updatedAt),
     completedAt: r.completedAt ? new Date(r.completedAt) : null,
+    cancelRequested: !!r.cancelRequestedAt,
     error,
   };
 }

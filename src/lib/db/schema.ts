@@ -111,7 +111,7 @@ export const trackSnapshots = pgTable(
 export const refreshRuns = pgTable("refresh_runs", {
   id: text("id").primaryKey(), // single 'current' row
   kind: text("kind").notNull(), // 'shallow' | 'deep'
-  status: text("status").notNull(), // 'idle' | 'running' | 'done' | 'failed'
+  status: text("status").notNull(), // 'idle' | 'running' | 'done' | 'failed' | 'cancelled'
   phase: text("phase"),
   message: text("message"),
   artistIndex: integer("artist_index").notNull().default(0),
@@ -126,6 +126,7 @@ export const refreshRuns = pgTable("refresh_runs", {
     .notNull()
     .defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
   error: text("error"),
 });
 

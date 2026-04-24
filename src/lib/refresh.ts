@@ -16,7 +16,15 @@ import {
   beginRun,
   updateRun,
   completeRun,
+  isCancelRequested,
 } from "@/lib/refresh-status";
+
+class CancelledError extends Error {
+  constructor() {
+    super("cancelled");
+    this.name = "CancelledError";
+  }
+}
 import { eq } from "drizzle-orm";
 
 export type RefreshReport = {
@@ -90,15 +98,15 @@ export async function runRefresh(
     const startMs = Date.now();
 
     const spotifyIds = roster.map((a) => a.spotifyId);
-    // Shallow refresh: skip the auth cookie entirely. Monthly listeners +
-    // top-5 tracks render on the anonymous public page, and skipping the
-    // cookie lets us run higher concurrency without Spotify's "too many
-    // tabs" gate (which only triggers on shared authenticated sessions).
+    // Use the session cookie — Spotify's anti-bot serves stripped pages to
+    // anonymous fresh sessions, especially at concurrency > 1 from a single
+    // IP. Logged-in sessions get full pages reliably.
     let scraped = await scrapeArtistPages(spotifyIds, {
-      spDc: null,
-      concurrency: 5,
+      spDc: session.spDc,
+      concurrency: 3,
       skipAlbums: true,
       onOne: async (done, total, r) => {
+        if (await isCancelRequested()) throw new CancelledError();
         await updateRun({
           phase: "artists",
           artistIndex: offset + done,
@@ -122,8 +130,8 @@ export async function runRefresh(
       await new Promise((r) => setTimeout(r, 1500));
       const retryIds = misses.map((m) => m.spotifyId);
       const retried = await scrapeArtistPages(retryIds, {
-        spDc: null,
-        concurrency: 3,
+        spDc: session.spDc,
+        concurrency: 2,
         skipAlbums: true,
       });
       const retriedById = new Map(retried.map((s) => [s.spotifyId, s]));
@@ -186,6 +194,21 @@ export async function runRefresh(
       nextOffset,
     };
   } catch (e) {
+    if (e instanceof CancelledError) {
+      await completeRun("cancelled");
+      return {
+        mode: "shallow",
+        artistsRefreshed: 0,
+        tracksRefreshed: 0,
+        albumsScraped: 0,
+        scrapeHits: 0,
+        scrapeMisses: 0,
+        durationMs: Date.now() - startedAt,
+        sessionStatus: session.spDc ? session.status : "absent",
+        totalInRoster: fullRoster.length,
+        nextOffset: null,
+      };
+    }
     await completeRun(
       "failed",
       e instanceof Error ? e.message : String(e),
@@ -295,6 +318,7 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
     try {
       let artistIdx = 0;
       for (const { artist: row, albumIds } of artistAlbums) {
+        if (await isCancelRequested()) throw new CancelledError();
         artistIdx += 1;
         await updateRun({
           phase: "albums",
@@ -407,6 +431,7 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
         browser,
         concurrency: 2,
         onOne: async (done, total, r) => {
+          if (await isCancelRequested()) throw new CancelledError();
           if (r.streams !== null) {
             // Find all (artist, track) rows for this spotify_id and write
             // a snapshot for each. Multiple roster artists might share a
@@ -466,6 +491,19 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
       sessionStatus: "ok",
     };
   } catch (e) {
+    if (e instanceof CancelledError) {
+      await completeRun("cancelled");
+      return {
+        mode: "deep",
+        artistsRefreshed: 0,
+        tracksRefreshed: 0,
+        albumsScraped: 0,
+        scrapeHits: 0,
+        scrapeMisses: 0,
+        durationMs: Date.now() - startedAt,
+        sessionStatus: "ok",
+      };
+    }
     await completeRun(
       "failed",
       e instanceof Error ? e.message : String(e),
