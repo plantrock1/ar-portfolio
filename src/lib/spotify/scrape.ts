@@ -220,6 +220,13 @@ export async function scrapeArtistPages(
   opts: {
     spDc?: string | null;
     concurrency?: number;
+    /**
+     * Skip the discography scroll + album-link collection. Shallow refresh
+     * only needs monthly listeners + top-5 tracks (both rendered in the
+     * first viewport); skipping the bottom-of-page work saves ~3s per
+     * artist and keeps us well inside Vercel's 60s function budget.
+     */
+    skipAlbums?: boolean;
     /** Called after each artist finishes; useful for live progress. */
     onOne?: (
       done: number,
@@ -244,7 +251,7 @@ export async function scrapeArtistPages(
         let result: ScrapedArtistPage;
         try {
           await setupPage(page, opts.spDc);
-          result = await scrapeArtistPage(page, id);
+          result = await scrapeArtistPage(page, id, opts.skipAlbums);
         } finally {
           await page.close().catch(() => {});
         }
@@ -273,6 +280,7 @@ export async function scrapeArtistPages(
 async function scrapeArtistPage(
   page: Page,
   spotifyId: string,
+  skipAlbums = false,
 ): Promise<ScrapedArtistPage> {
   try {
     await page.goto(`https://open.spotify.com/artist/${spotifyId}`, {
@@ -284,13 +292,21 @@ async function scrapeArtistPage(
       .catch(() => null);
     await dismissCookieBanner(page);
 
-    // Scroll down so the discography section hydrates and lazy album cards render.
-    await page
-      .evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-      .catch(() => {});
-    await new Promise((r) => setTimeout(r, 2500));
-    await page.evaluate(() => window.scrollTo(0, 400)).catch(() => {});
-    await new Promise((r) => setTimeout(r, 1000));
+    if (skipAlbums) {
+      // Fast path: monthly listeners + top-5 tracks are in the hero; no
+      // need to scroll for album links.
+      await page.evaluate(() => window.scrollTo(0, 400)).catch(() => {});
+      await new Promise((r) => setTimeout(r, 800));
+    } else {
+      // Deep path: scroll to bottom to let the discography hydrate with
+      // lazy-loaded album tiles, then come back up.
+      await page
+        .evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+        .catch(() => {});
+      await new Promise((r) => setTimeout(r, 2500));
+      await page.evaluate(() => window.scrollTo(0, 400)).catch(() => {});
+      await new Promise((r) => setTimeout(r, 1000));
+    }
 
     const data = await page.evaluate(() => {
       const body = document.body.innerText;

@@ -93,6 +93,7 @@ export async function runRefresh(
     let scraped = await scrapeArtistPages(spotifyIds, {
       spDc: session.spDc,
       concurrency: 3,
+      skipAlbums: true, // shallow refresh doesn't need album IDs
       onOne: async (done, total, r) => {
         await updateRun({
           phase: "artists",
@@ -120,6 +121,7 @@ export async function runRefresh(
       const retried = await scrapeArtistPages(retryIds, {
         spDc: session.spDc,
         concurrency: 2,
+        skipAlbums: true,
       });
       const retriedById = new Map(retried.map((s) => [s.spotifyId, s]));
       scraped = scraped.map((s) => {
