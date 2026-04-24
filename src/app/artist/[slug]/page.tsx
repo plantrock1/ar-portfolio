@@ -217,7 +217,7 @@ export default async function ArtistPage({
           </div>
         ) : null}
       </main>
-      <SiteFooter displayName={displayName} />
+      <SiteFooter displayName={displayName} roleTitle={settings.roleTitle} />
     </>
   );
 }

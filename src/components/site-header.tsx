@@ -21,8 +21,15 @@ export function SiteHeader({ displayName }: { displayName?: string }) {
   );
 }
 
-export function SiteFooter({ displayName }: { displayName?: string }) {
-  const label = displayName?.trim() || "A&R Portfolio";
+export function SiteFooter({
+  displayName,
+  roleTitle,
+}: {
+  displayName?: string;
+  roleTitle?: string;
+}) {
+  const role = roleTitle?.trim() || "A&R";
+  const label = displayName?.trim() || `${role} Portfolio`;
   return (
     <footer className="mt-24 border-t border-white/5">
       <div className="mx-auto max-w-6xl px-6 py-10 flex items-center justify-between text-xs text-white/40">

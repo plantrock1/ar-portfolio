@@ -94,7 +94,7 @@ export default async function Home({
             <div>
               <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-white/40 mb-4">
                 <span className="inline-block w-6 h-px bg-white/30" />
-                A&R Portfolio
+                {settings.roleTitle} Portfolio
               </div>
               <div className="flex items-center gap-5 mb-5">
                 {settings.bioPhotoUrl ? (
@@ -149,7 +149,10 @@ export default async function Home({
           </div>
         ))}
       </main>
-      <SiteFooter displayName={settings.displayName} />
+      <SiteFooter
+        displayName={settings.displayName}
+        roleTitle={settings.roleTitle}
+      />
     </>
   );
 }

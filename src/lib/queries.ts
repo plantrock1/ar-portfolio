@@ -374,6 +374,7 @@ const DEFAULT_SECTION_ORDER: import("@/lib/db/schema").SectionId[] = [
 
 export async function getSiteSettings(): Promise<{
   displayName: string;
+  roleTitle: string;
   bio: string;
   bioPhotoUrl: string | null;
   socials: import("@/lib/db/schema").ArtistSocials;
@@ -388,6 +389,7 @@ export async function getSiteSettings(): Promise<{
   if (rows.length === 0)
     return {
       displayName: "",
+      roleTitle: "A&R",
       bio: "",
       bioPhotoUrl: null,
       socials: {},
@@ -397,6 +399,7 @@ export async function getSiteSettings(): Promise<{
     };
   return {
     displayName: rows[0].displayName ?? "",
+    roleTitle: rows[0].roleTitle?.trim() || "A&R",
     bio: rows[0].bio,
     bioPhotoUrl: rows[0].bioPhotoUrl ?? null,
     socials: rows[0].socials ?? {},

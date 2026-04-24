@@ -41,6 +41,7 @@ type RefreshRun = {
 export function AdminDashboard({
   initialArtists,
   initialDisplayName,
+  initialRoleTitle,
   initialBio,
   initialBioPhotoUrl,
   initialSocials,
@@ -53,6 +54,7 @@ export function AdminDashboard({
 }: {
   initialArtists: Artist[];
   initialDisplayName: string;
+  initialRoleTitle: string;
   initialBio: string;
   initialBioPhotoUrl: string | null;
   initialSocials: ArtistSocials;
@@ -74,6 +76,8 @@ export function AdminDashboard({
   const [role, setRole] = useState("");
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [savedDisplayName, setSavedDisplayName] = useState(initialDisplayName);
+  const [roleTitle, setRoleTitle] = useState(initialRoleTitle);
+  const [savedRoleTitle, setSavedRoleTitle] = useState(initialRoleTitle);
   const [bio, setBio] = useState(initialBio);
   const [savedBio, setSavedBio] = useState(initialBio);
   const [bioPhotoUrl, setBioPhotoUrl] = useState<string | null>(
@@ -417,6 +421,7 @@ export function AdminDashboard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         displayName,
+        roleTitle,
         bio,
         socials,
         bioPhotoUrl: bioPhotoUrl ?? "",
@@ -428,6 +433,7 @@ export function AdminDashboard({
       return;
     }
     setSavedDisplayName(displayName);
+    setSavedRoleTitle(roleTitle);
     setSavedBio(bio);
     setSavedSocials(socials);
     setSavedBioPhotoUrl(bioPhotoUrl);
@@ -593,16 +599,34 @@ export function AdminDashboard({
             Shown on the home page and in the browser tab
           </span>
         </div>
-        <div className="mb-4">
-          <label className="text-[10px] uppercase tracking-widest text-white/40">
-            Display name
-          </label>
-          <input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="e.g., John Smith"
-            className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
-          />
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3">
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-white/40">
+              Display name
+            </label>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="e.g., John Smith"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-white/40">
+              Role title
+            </label>
+            <input
+              value={roleTitle}
+              onChange={(e) => setRoleTitle(e.target.value)}
+              placeholder="A&R"
+              maxLength={40}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+            />
+            <div className="mt-1 text-[10px] text-white/30">
+              Eyebrow: “{(roleTitle.trim() || "A&R")} Portfolio” · Tab: “
+              {(displayName.trim() || "Name")} — {(roleTitle.trim() || "A&R")}”
+            </div>
+          </div>
         </div>
         <div className="flex gap-4 items-start">
           <div className="flex flex-col items-center gap-2 shrink-0">
@@ -686,6 +710,7 @@ export function AdminDashboard({
         {(() => {
           const dirty =
             displayName !== savedDisplayName ||
+            roleTitle !== savedRoleTitle ||
             bio !== savedBio ||
             bioPhotoUrl !== savedBioPhotoUrl ||
             JSON.stringify(socials) !== JSON.stringify(savedSocials);

@@ -135,6 +135,10 @@ export type SectionId = "roster" | "top_tracks" | "featured_media";
 export const siteSettings = pgTable("site_settings", {
   id: text("id").primaryKey(),
   displayName: text("display_name").notNull().default(""),
+  // Role label — drives the eyebrow ("A&R Portfolio" / "Manager Portfolio")
+  // and the tab title suffix ("Jane Doe — A&R"). Defaults to "A&R" so
+  // existing deployments keep their current copy after a `db:push`.
+  roleTitle: text("role_title").notNull().default("A&R"),
   bio: text("bio").notNull().default(""),
   bioPhotoUrl: text("bio_photo_url"),
   socials: jsonb("socials").$type<ArtistSocials>().notNull().default({}),

@@ -34,6 +34,7 @@ export default async function AdminPage() {
       <AdminDashboard
         initialArtists={artists}
         initialDisplayName={settings.displayName}
+        initialRoleTitle={settings.roleTitle}
         initialBio={settings.bio}
         initialBioPhotoUrl={settings.bioPhotoUrl}
         initialSocials={settings.socials}

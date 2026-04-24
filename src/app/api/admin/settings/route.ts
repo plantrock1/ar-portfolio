@@ -40,6 +40,9 @@ const RosterDesignationsSchema = z
 const Body = z
   .object({
     displayName: z.string().max(100).optional(),
+    // Short label like "A&R", "Manager", "Producer" — drives the eyebrow
+    // ("<role> Portfolio") and the browser tab suffix.
+    roleTitle: z.string().max(40).optional(),
     bio: z.string().max(2000).optional(),
     bioPhotoUrl: BioPhoto.optional().or(z.null()),
     showListenerChart: z.boolean().optional(),
@@ -50,6 +53,7 @@ const Body = z
   .refine(
     (v) =>
       v.displayName !== undefined ||
+      v.roleTitle !== undefined ||
       v.bio !== undefined ||
       v.bioPhotoUrl !== undefined ||
       v.showListenerChart !== undefined ||
@@ -70,6 +74,8 @@ export async function POST(req: NextRequest) {
   const patch: Record<string, unknown> = { updatedAt: sql`now()` };
   if (parsed.data.displayName !== undefined)
     patch.displayName = parsed.data.displayName.trim();
+  if (parsed.data.roleTitle !== undefined)
+    patch.roleTitle = parsed.data.roleTitle.trim() || "A&R";
   if (parsed.data.bio !== undefined) patch.bio = parsed.data.bio;
   if (parsed.data.bioPhotoUrl !== undefined)
     patch.bioPhotoUrl = parsed.data.bioPhotoUrl || null;
@@ -105,6 +111,7 @@ export async function POST(req: NextRequest) {
     .values({
       id: "main",
       displayName: parsed.data.displayName?.trim() ?? "",
+      roleTitle: parsed.data.roleTitle?.trim() || "A&R",
       bio: parsed.data.bio ?? "",
       bioPhotoUrl: parsed.data.bioPhotoUrl || null,
       showListenerChart: parsed.data.showListenerChart ?? false,

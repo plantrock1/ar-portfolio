@@ -17,21 +17,23 @@ const fraunces = Fraunces({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  // Read the A&R's display name from site settings so each deployment
-  // shows its owner's name in the browser tab + social previews without
-  // any code changes.
-  let displayName = "A&R Portfolio";
+  // Read the owner's display name + role label from site settings so each
+  // deployment shows its owner's name + role (A&R / Manager / Producer) in
+  // the browser tab + social previews without any code changes.
+  let displayName = "";
+  let roleTitle = "A&R";
   try {
     const settings = await getSiteSettings();
     if (settings.displayName?.trim()) displayName = settings.displayName.trim();
+    if (settings.roleTitle?.trim()) roleTitle = settings.roleTitle.trim();
   } catch {
     // DB unreachable during static generation — fall back to the default
     // and move on. Pages will re-fetch at request time.
   }
-  const title =
-    displayName === "A&R Portfolio" ? displayName : `${displayName} — A&R`;
-  const description =
-    "A&R portfolio & analytics. Live Spotify metrics across a curated roster of signed artists and projects.";
+  const title = displayName
+    ? `${displayName} — ${roleTitle}`
+    : `${roleTitle} Portfolio`;
+  const description = `${roleTitle} portfolio & analytics. Live Spotify metrics across a curated roster of signed artists and projects.`;
   return {
     title,
     description,
