@@ -138,18 +138,39 @@ export async function getArtistTracks(artistId: string) {
     .sort((a, b) => (b.streams ?? 0) - (a.streams ?? 0));
 }
 
+function normalizeTitle(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 export async function getArtistTopTracks(artistId: string, limit = 5) {
-  // Dedupe by ISRC so a re-released single+album version shows once.
+  // Dedupe in two stages:
+  //   1) by ISRC (same recording, different distributor / re-release)
+  //   2) by normalized title (same song, different master — e.g., a re-
+  //      registered track that got a new ISRC under a new distributor)
+  // We keep the version with the highest stream count per song.
   const all = await getArtistTracks(artistId);
-  const byRecording = new Map<string, (typeof all)[number]>();
+
+  // Stage 1: ISRC dedup
+  const byIsrc = new Map<string, (typeof all)[number]>();
   for (const t of all) {
     const key = t.isrc ?? t.spotifyId;
-    const existing = byRecording.get(key);
+    const existing = byIsrc.get(key);
     if (!existing || (t.streams ?? 0) > (existing.streams ?? 0)) {
-      byRecording.set(key, t);
+      byIsrc.set(key, t);
     }
   }
-  return Array.from(byRecording.values())
+
+  // Stage 2: normalized-title dedup
+  const byTitle = new Map<string, (typeof all)[number]>();
+  for (const t of byIsrc.values()) {
+    const key = normalizeTitle(t.name);
+    const existing = byTitle.get(key);
+    if (!existing || (t.streams ?? 0) > (existing.streams ?? 0)) {
+      byTitle.set(key, t);
+    }
+  }
+
+  return Array.from(byTitle.values())
     .sort((a, b) => (b.streams ?? 0) - (a.streams ?? 0))
     .slice(0, limit);
 }
@@ -157,15 +178,15 @@ export async function getArtistTopTracks(artistId: string, limit = 5) {
 export async function getArtistTotalStreams(
   artistId: string,
 ): Promise<number> {
-  // Dedupe by ISRC — re-releases of the same recording (single + album +
-  // deluxe) share an ISRC but have different spotify_ids. We take the MAX
-  // stream count per ISRC (the most-played release represents the song's
-  // real listenership) and sum those. Tracks without an ISRC fall back to
-  // spotify_id so nothing is silently dropped.
+  // Two-stage dedup for accurate totals:
+  //  1) by ISRC — same recording across single + album + deluxe releases
+  //  2) by normalized title — same song re-registered under a new ISRC
+  // We take the MAX stream count per dedup key, then sum.
   const result = await db.execute<{ total: string | null }>(sql`
     WITH latest_track AS (
       SELECT DISTINCT ON (tr.spotify_id)
         tr.spotify_id,
+        tr.name,
         tr.isrc,
         ts.streams
       FROM tracks tr
@@ -176,11 +197,19 @@ export async function getArtistTotalStreams(
       ORDER BY tr.spotify_id, ts.captured_at DESC
     ),
     per_recording AS (
-      SELECT COALESCE(isrc, spotify_id) AS key, MAX(streams) AS streams
+      -- Stage 1: collapse identical recordings via ISRC (spotify_id fallback)
+      SELECT DISTINCT ON (COALESCE(isrc, spotify_id))
+        name, streams
       FROM latest_track
-      GROUP BY COALESCE(isrc, spotify_id)
+      ORDER BY COALESCE(isrc, spotify_id), streams DESC
+    ),
+    per_song AS (
+      -- Stage 2: collapse same-title remasters / re-registrations
+      SELECT MAX(streams) AS streams
+      FROM per_recording
+      GROUP BY LOWER(TRIM(REGEXP_REPLACE(name, '\\s+', ' ', 'g')))
     )
-    SELECT SUM(streams)::text AS total FROM per_recording
+    SELECT SUM(streams)::text AS total FROM per_song
   `);
   return result.rows[0]?.total ? Number(result.rows[0].total) : 0;
 }
@@ -213,11 +242,11 @@ export async function getAggregate(): Promise<AggregateTotals> {
       ORDER BY s.artist_id, s.captured_at DESC
     ),
     latest_track AS (
-      -- Dedupe by spotify_id (a roster-internal collab only shows up once)
-      -- and then by ISRC (a single + album release of the same recording
-      -- only contributes once — we take the MAX stream count per recording).
+      -- Start from latest stream snapshot per track row.
       SELECT DISTINCT ON (tr.spotify_id)
         tr.spotify_id,
+        tr.artist_id,
+        tr.name,
         tr.isrc,
         ts.streams
       FROM track_snapshots ts
@@ -227,15 +256,24 @@ export async function getAggregate(): Promise<AggregateTotals> {
       ORDER BY tr.spotify_id, ts.captured_at DESC
     ),
     per_recording AS (
-      SELECT COALESCE(isrc, spotify_id) AS key, MAX(streams) AS streams
+      -- Stage 1: dedup identical recordings by ISRC
+      SELECT DISTINCT ON (COALESCE(isrc, spotify_id))
+        name, artist_id, streams
       FROM latest_track
-      GROUP BY COALESCE(isrc, spotify_id)
+      ORDER BY COALESCE(isrc, spotify_id), streams DESC
+    ),
+    per_song AS (
+      -- Stage 2: dedup same-song re-registrations (same normalized title
+      -- under the same roster artist)
+      SELECT MAX(streams) AS streams
+      FROM per_recording
+      GROUP BY artist_id, LOWER(TRIM(REGEXP_REPLACE(name, '\\s+', ' ', 'g')))
     )
     SELECT
       (SELECT COUNT(*)::text FROM latest_artist) AS artist_count,
       (SELECT SUM(followers)::text FROM latest_artist) AS total_followers,
       (SELECT SUM(monthly_listeners)::text FROM latest_artist) AS total_monthly_listeners,
-      (SELECT SUM(streams)::text FROM per_recording) AS total_streams,
+      (SELECT SUM(streams)::text FROM per_song) AS total_streams,
       (SELECT MAX(captured_at) FROM latest_artist) AS as_of
   `);
   const row = result.rows[0];
