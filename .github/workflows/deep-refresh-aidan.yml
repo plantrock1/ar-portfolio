@@ -10,7 +10,7 @@ on:
 jobs:
   deep-refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 180
 
     steps:
       - name: Checkout repo
