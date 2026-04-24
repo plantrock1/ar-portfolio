@@ -113,6 +113,7 @@ export function AdminDashboard({
   const [pwSaving, setPwSaving] = useState(false);
   const [run, setRun] = useState<RefreshRun | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const shallowAbortRef = useRef<AbortController | null>(null);
 
   function startPolling() {
     stopPolling();
@@ -224,22 +225,31 @@ export function AdminDashboard({
     setRun(optimisticRun("shallow"));
     startPolling();
 
-    // Chunked client loop: each call processes 5 artists at a time, so we
-    // stay comfortably under Vercel's 60-second function timeout no matter
-    // how large the roster is. Progress bar updates via the status poller
-    // while each chunk runs.
+    // Chunked client loop — each call processes N artists so no single
+    // function invocation nears Vercel's 60s timeout. AbortController lets
+    // the Stop button interrupt the loop mid-chunk.
     const CHUNK = 4;
+    const ctrl = new AbortController();
+    shallowAbortRef.current = ctrl;
     let offset = 0;
     let totalArtists = 0;
     let totalHits = 0;
     let totalMisses = 0;
-    let totalTracks = 0;
     const runStart = Date.now();
+    let cancelled = false;
     try {
       while (true) {
         const res = await fetch(
           `/api/cron/refresh?offset=${offset}&limit=${CHUNK}`,
-        );
+          { signal: ctrl.signal },
+        ).catch((e) => {
+          if (e?.name === "AbortError") return null;
+          throw e;
+        });
+        if (!res) {
+          cancelled = true;
+          break;
+        }
         const data = await parseResponse(res);
         if (!res.ok) {
           setError(data.error ?? "Refresh failed");
@@ -249,12 +259,12 @@ export function AdminDashboard({
         totalArtists += data.artistsRefreshed ?? 0;
         totalHits += data.scrapeHits ?? 0;
         totalMisses += data.scrapeMisses ?? 0;
-        totalTracks += data.tracksRefreshed ?? 0;
         if (data.nextOffset === null || data.nextOffset === undefined) break;
         offset = data.nextOffset;
       }
     } finally {
       stopPolling();
+      shallowAbortRef.current = null;
     }
 
     // Final status poll to pick up the completion state.
