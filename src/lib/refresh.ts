@@ -119,23 +119,28 @@ export async function runRefresh(
       },
     });
 
-    // Retry the ones that came back empty — catches flaky page loads and
-    // Spotify rate-limit hiccups. Only if we still have time budget left.
+    // Retry the ones that came back empty. Strict budget: we only retry up
+    // to MAX_RETRY_IDS artists, and only if we can squeeze them into what's
+    // left of the 55s chunk window. Better to miss a few and return cleanly
+    // than blow the function timeout and return nothing.
     const misses = scraped.filter((s) => s.monthlyListeners === null);
     const elapsed = Date.now() - startMs;
-    if (misses.length > 0 && elapsed < BUDGET_MS * 0.6) {
+    const remaining = BUDGET_MS - elapsed;
+    const MAX_RETRY_IDS = 2;
+    const PER_RETRY_BUDGET = 14_000; // page load + 12s hydration + 2s slack
+    const maxFits = Math.max(0, Math.floor(remaining / PER_RETRY_BUDGET));
+    const retryCount = Math.min(misses.length, MAX_RETRY_IDS, maxFits);
+
+    if (retryCount > 0) {
       await updateRun({
-        message: `Retrying ${misses.length} missed artist${misses.length === 1 ? "" : "s"}…`,
+        message: `Retrying ${retryCount} slow artist${retryCount === 1 ? "" : "s"}…`,
       });
-      await new Promise((r) => setTimeout(r, 1500));
-      const retryIds = misses.map((m) => m.spotifyId);
-      // Retry: serial + longer listener wait. Slower per page but far more
-      // likely to catch slow-hydrating artist pages the fast first pass missed.
+      const retryIds = misses.slice(0, retryCount).map((m) => m.spotifyId);
       const retried = await scrapeArtistPages(retryIds, {
         spDc: session.spDc,
-        concurrency: 1,
+        concurrency: 2,
         skipAlbums: true,
-        listenerTimeoutMs: 15_000,
+        listenerTimeoutMs: 12_000,
       });
       const retriedById = new Map(retried.map((s) => [s.spotifyId, s]));
       scraped = scraped.map((s) => {
