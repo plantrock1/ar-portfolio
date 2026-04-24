@@ -99,8 +99,6 @@ export function AdminDashboard({
   );
   const [newDesignation, setNewDesignation] = useState("");
   const [isAdding, startAdding] = useTransition();
-  const [isRefreshing, startRefresh] = useTransition();
-  const [isDeepRefreshing, startDeepRefresh] = useTransition();
   const [isSavingBio, startSavingBio] = useTransition();
   const [isSavingSession, startSavingSession] = useTransition();
   const [editingArtistId, setEditingArtistId] = useState<string | null>(null);
@@ -120,22 +118,41 @@ export function AdminDashboard({
   });
   const [isTriggeringGha, startTriggerGha] = useTransition();
 
+  // Always-on polling so runs triggered anywhere (admin, GHA UI, cron) show
+  // progress here. We adapt the cadence based on whether a run is active:
+  // fast while running (smooth progress bar), relaxed when idle.
   function startPolling() {
     stopPolling();
-    pollTimer.current = setInterval(async () => {
+    let currentInterval = 3000;
+    const tick = async () => {
       try {
-        const res = await fetch("/api/admin/refresh-status", { cache: "no-store" });
+        const res = await fetch("/api/admin/refresh-status", {
+          cache: "no-store",
+        });
         if (!res.ok) return;
         const data = await res.json();
-        setRun(data.run ?? null);
-        if (data.run && data.run.status !== "running") {
-          stopPolling();
-          router.refresh();
+        const r = data.run ?? null;
+        setRun((prev) => {
+          // If the run just transitioned from running to a terminal state,
+          // refresh the page so aggregate stats / last-refresh timestamps
+          // update.
+          if (prev?.status === "running" && r && r.status !== "running") {
+            router.refresh();
+          }
+          return r;
+        });
+        const desired = r?.status === "running" ? 1500 : 4000;
+        if (desired !== currentInterval) {
+          currentInterval = desired;
+          if (pollTimer.current) clearInterval(pollTimer.current);
+          pollTimer.current = setInterval(tick, currentInterval);
         }
       } catch {
         // network hiccup; keep polling
       }
-    }, 1500);
+    };
+    tick(); // immediate first tick — don't wait for interval
+    pollTimer.current = setInterval(tick, currentInterval);
   }
   function stopPolling() {
     if (pollTimer.current) {
@@ -144,14 +161,9 @@ export function AdminDashboard({
     }
   }
   useEffect(() => {
-    // On mount, check if a run is already in flight (e.g., page reload during refresh)
-    (async () => {
-      const res = await fetch("/api/admin/refresh-status", { cache: "no-store" });
-      if (!res.ok) return;
-      const data = await res.json();
-      setRun(data.run ?? null);
-      if (data.run?.status === "running") startPolling();
-    })();
+    // Always poll — catches GHA runs triggered from github.com, cron
+    // runs, or other admin tabs.
+    startPolling();
     return stopPolling;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -224,77 +236,6 @@ export function AdminDashboard({
     };
   }
 
-  async function refreshNow() {
-    setError(null);
-    setMessage(null);
-    setRun(optimisticRun("shallow"));
-    startPolling();
-
-    // Chunked client loop — each call processes N artists so no single
-    // function invocation nears Vercel's 60s timeout. AbortController lets
-    // the Stop button interrupt the loop mid-chunk.
-    const CHUNK = 4;
-    const ctrl = new AbortController();
-    shallowAbortRef.current = ctrl;
-    let offset = 0;
-    let totalArtists = 0;
-    let totalHits = 0;
-    let totalMisses = 0;
-    const runStart = Date.now();
-    let cancelled = false;
-    try {
-      while (true) {
-        const res = await fetch(
-          `/api/cron/refresh?offset=${offset}&limit=${CHUNK}`,
-          { signal: ctrl.signal },
-        ).catch((e) => {
-          if (e?.name === "AbortError") return null;
-          throw e;
-        });
-        if (!res) {
-          cancelled = true;
-          break;
-        }
-        const data = await parseResponse(res);
-        if (!res.ok) {
-          setError(data.error ?? "Refresh failed");
-          stopPolling();
-          return;
-        }
-        totalArtists += data.artistsRefreshed ?? 0;
-        totalHits += data.scrapeHits ?? 0;
-        totalMisses += data.scrapeMisses ?? 0;
-        if (data.nextOffset === null || data.nextOffset === undefined) break;
-        offset = data.nextOffset;
-      }
-    } finally {
-      stopPolling();
-      shallowAbortRef.current = null;
-    }
-
-    // Final status poll to pick up the completion state.
-    const final = await fetch("/api/admin/refresh-status", {
-      cache: "no-store",
-    });
-    if (final.ok) setRun((await final.json()).run ?? null);
-
-    const elapsedSec = Math.round((Date.now() - runStart) / 1000);
-    if (cancelled) {
-      setMessage(`Refresh stopped after ${elapsedSec}s · ${totalArtists} artists processed`);
-    } else {
-      const missText =
-        totalMisses > 0
-          ? ` · ${totalMisses} artist${totalMisses === 1 ? "" : "s"} kept their previous value (page load timeout)`
-          : "";
-      setMessage(
-        `Refreshed ${totalArtists} artists · ${totalHits}/${
-          totalHits + totalMisses
-        } succeeded · ${elapsedSec}s${missText}`,
-      );
-    }
-    startRefresh(() => router.refresh());
-  }
-
   async function cancelRunningRefresh() {
     // Server-side: tells the deep-refresh loop (if any) to exit at next
     // checkpoint. Also bails out of the in-flight shallow fetch immediately.
@@ -333,13 +274,9 @@ export function AdminDashboard({
       return;
     }
     setMessage(
-      `Triggered on GitHub. Progress appears here once the job starts (~30s). ` +
-        `Live logs: ${data.workflowUrl}`,
+      `Triggered on GitHub. Progress appears here once the job starts (~30s).`,
     );
     startTriggerGha(() => router.refresh());
-    // Start polling — once the GHA job begins it writes to refresh_runs
-    // and our poller picks it up automatically.
-    startPolling();
   }
 
   // Direct GitHub URLs per A&R. Falls back to the top-level actions tab if
@@ -351,27 +288,6 @@ export function AdminDashboard({
     ? `https://github.com/plantrock1/ar-portfolio/actions/workflows/deep-refresh-${gha.slug}.yml`
     : "https://github.com/plantrock1/ar-portfolio/actions";
 
-  async function deepRefresh() {
-    setError(null);
-    setMessage(null);
-    setRun(optimisticRun("deep"));
-    startPolling();
-    const res = await fetch("/api/cron/deep-refresh");
-    const data = await parseResponse(res);
-    stopPolling();
-    const final = await fetch("/api/admin/refresh-status", {
-      cache: "no-store",
-    });
-    if (final.ok) setRun((await final.json()).run ?? null);
-    if (!res.ok) {
-      setError(data.error ?? "Deep refresh failed");
-      return;
-    }
-    setMessage(
-      `Deep refresh complete · ${data.artistsRefreshed} artists · ${data.albumsScraped} albums · ${data.tracksRefreshed} tracks · ${Math.round(data.durationMs / 1000)}s`,
-    );
-    startDeepRefresh(() => router.refresh());
-  }
 
   async function saveSession() {
     setError(null);
@@ -972,175 +888,150 @@ export function AdminDashboard({
               </button>
             ) : null}
             <button
-              onClick={refreshNow}
-              disabled={isRefreshing || isDeepRefreshing}
+              onClick={() => triggerGhaRefresh("shallow")}
+              disabled={
+                !gha.configured ||
+                isTriggeringGha ||
+                run?.status === "running"
+              }
               className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
-              title="Fast update (~30s): refreshes monthly listeners + top 5 stream counts per artist."
+              title={
+                gha.configured
+                  ? "Fast update on GitHub Actions (3–10 min): monthly listeners + top 5 streams per artist."
+                  : "Not configured yet — see the setup section below."
+              }
             >
-              {isRefreshing ? "Refreshing…" : "Refresh"}
+              {isTriggeringGha ? "Triggering…" : "Refresh"}
             </button>
             <button
-              onClick={deepRefresh}
+              onClick={() => triggerGhaRefresh("deep")}
               disabled={
-                isRefreshing ||
-                isDeepRefreshing ||
+                !gha.configured ||
+                isTriggeringGha ||
+                run?.status === "running" ||
                 !sessionState.hasCookie
               }
               className="rounded-lg bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
               title={
-                sessionState.hasCookie
-                  ? "Full update (15 min–1 hr): visits every album + every track page to sync complete lifetime stream totals."
-                  : "Requires sp_dc session cookie (see above)"
+                !gha.configured
+                  ? "Not configured yet — see the setup section below."
+                  : !sessionState.hasCookie
+                    ? "Requires sp_dc session cookie (see above)"
+                    : "Full update on GitHub Actions (15 min–1 hr): lifetime stream totals for every track."
               }
             >
-              {isDeepRefreshing ? "Deep refresh…" : "Deep refresh"}
+              {isTriggeringGha ? "Triggering…" : "Deep refresh"}
             </button>
           </div>
         </div>
         <div className="mt-4 grid sm:grid-cols-2 gap-3 text-xs text-white/50 leading-relaxed">
           <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-            <div className="text-white/80 font-medium mb-1">Refresh</div>
-            <div>
-              Fast update. Scrapes each artist&apos;s Spotify page to update
-              monthly listeners and stream counts for their top 5 tracks.
-              Takes about 30 seconds. Runs automatically every day.
-            </div>
-          </div>
-          <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-            <div className="text-white/80 font-medium mb-1">Deep refresh</div>
-            <div>
-              Full update. For every artist, lists every album (via Spotify
-              API), scrapes each album for its tracks, then visits every
-              individual track page to read its lifetime stream count. Takes
-              15 min for a small roster, longer for big ones. Runs
-              automatically every Sunday morning via GitHub; click here to
-              run manually anytime.
-            </div>
-          </div>
-        </div>
-
-        {/* ---------- Reliable (GitHub Actions) refresh ---------- */}
-        <div className="mt-6 rounded-lg border border-white/10 bg-black/30 p-4">
-          <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
-            <h3 className="text-sm text-white font-medium">
-              Reliable refresh via GitHub Actions
-            </h3>
-            <span
-              className={`text-[10px] uppercase tracking-widest rounded-full border px-2 py-0.5 ${
-                gha.configured
-                  ? "text-green-400 bg-green-500/10 border-green-500/20"
-                  : "text-white/40 bg-white/5 border-white/10"
-              }`}
-            >
-              {gha.configured ? "Configured" : "Not configured"}
-            </span>
-          </div>
-          <p className="text-xs text-white/50 leading-relaxed mb-3">
-            Runs the same refresh on GitHub&apos;s infrastructure instead of
-            Vercel — no 60-second timeout, rotating IPs that are less
-            rate-limited by Spotify. Best for rosters over ~15 artists or
-            when the Vercel refresh is missing data.
-          </p>
-          {gha.configured ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => triggerGhaRefresh("shallow")}
-                disabled={isTriggeringGha || (run?.status === "running")}
-                className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
-                title="Kicks off a full shallow refresh on GitHub (3–10 min depending on roster size)."
-              >
-                {isTriggeringGha ? "Triggering…" : "Reliable refresh"}
-              </button>
-              <button
-                onClick={() => triggerGhaRefresh("deep")}
-                disabled={isTriggeringGha || (run?.status === "running")}
-                className="rounded-lg bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
-                title="Kicks off a full deep refresh on GitHub (15 min–1 hr)."
-              >
-                {isTriggeringGha ? "Triggering…" : "Reliable deep refresh"}
-              </button>
-              <span className="text-white/30 text-xs px-1">or open on GitHub:</span>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="text-white/80 font-medium">Refresh</div>
               <a
                 href={ghaShallowUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-white/60 hover:text-white underline underline-offset-2"
+                className="text-[10px] text-white/40 hover:text-white underline underline-offset-2"
               >
-                Shallow workflow ↗
+                Open on GitHub ↗
               </a>
+            </div>
+            <div>
+              Fast update. Scrapes each artist&apos;s Spotify page for
+              monthly listeners and top-5 stream counts. Runs on GitHub
+              Actions (3–10 min depending on roster size). Progress shows
+              above once the job starts (~30s after triggering).
+            </div>
+          </div>
+          <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="text-white/80 font-medium">Deep refresh</div>
               <a
                 href={ghaDeepUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-white/60 hover:text-white underline underline-offset-2"
+                className="text-[10px] text-white/40 hover:text-white underline underline-offset-2"
               >
-                Deep workflow ↗
+                Open on GitHub ↗
               </a>
             </div>
-          ) : (
             <div>
-              <details className="rounded border border-white/10 bg-black/30 mb-3">
-                <summary className="cursor-pointer px-3 py-2 text-xs text-white/60 hover:text-white">
-                  How to enable (one-time setup, ~5 min) →
-                </summary>
-                <ol className="list-decimal list-inside px-4 pb-3 pt-1 text-xs text-white/60 space-y-1 leading-relaxed">
-                  <li>
-                    Go to{" "}
-                    <a
-                      href="https://github.com/settings/personal-access-tokens/new"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline text-white/80"
-                    >
-                      github.com/settings/personal-access-tokens/new
-                    </a>{" "}
-                    → create a fine-grained PAT
-                  </li>
-                  <li>
-                    Repository access:{" "}
-                    <code className="text-white/80">plantrock1/ar-portfolio</code>{" "}
-                    only
-                  </li>
-                  <li>
-                    Permissions → <strong>Actions: Read and write</strong>
-                  </li>
-                  <li>Copy the generated token</li>
-                  <li>
-                    In Vercel project settings → Environment Variables, add:
-                    <ul className="list-disc list-inside pl-4 pt-1">
-                      <li>
-                        <code className="text-white/80">GITHUB_PAT</code> = the
-                        token you just created
-                      </li>
-                      <li>
-                        <code className="text-white/80">GITHUB_AR_SLUG</code> ={" "}
-                        <code className="text-white/80">alec</code> /{" "}
-                        <code className="text-white/80">chase</code> /{" "}
-                        <code className="text-white/80">aidan</code>{" "}
-                        (matching your workflow filename)
-                      </li>
-                    </ul>
-                  </li>
-                  <li>Redeploy (Vercel → Deployments → Redeploy latest)</li>
-                </ol>
-              </details>
-              <p className="text-xs text-white/50 mb-2">
-                Until then, you can still trigger the workflow manually on
-                GitHub:
-              </p>
-              <div className="flex flex-wrap items-center gap-3 text-xs">
-                <a
-                  href="https://github.com/plantrock1/ar-portfolio/actions"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-lg border border-white/15 px-3 py-1.5 text-white/70 hover:text-white hover:bg-white/5"
-                >
-                  Open GitHub Actions ↗
-                </a>
-              </div>
+              Full discography update. Lists every album per artist, scrapes
+              each album for its tracks, then visits every track page to
+              read lifetime stream totals. Runs on GitHub Actions (15 min–1
+              hr). Auto-runs weekly; click to run on demand.
             </div>
-          )}
+          </div>
         </div>
+
+        {!gha.configured ? (
+          <div className="mt-6 rounded-lg border border-yellow-400/20 bg-yellow-500/5 p-4">
+            <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
+              <h3 className="text-sm text-yellow-200 font-medium">
+                GitHub trigger not configured
+              </h3>
+              <a
+                href="https://github.com/plantrock1/ar-portfolio/actions"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-white/60 hover:text-white underline underline-offset-2"
+              >
+                Open GitHub Actions ↗
+              </a>
+            </div>
+            <p className="text-xs text-white/60 leading-relaxed mb-3">
+              The Refresh / Deep refresh buttons above trigger workflows on
+              GitHub Actions — one-time setup unlocks them. Until that&apos;s
+              done, click <strong>Open GitHub Actions</strong> and hit{" "}
+              <strong>Run workflow</strong> manually on the workflow you
+              need.
+            </p>
+            <details className="rounded border border-white/10 bg-black/30">
+              <summary className="cursor-pointer px-3 py-2 text-xs text-white/60 hover:text-white">
+                How to enable (one-time setup, ~5 min) →
+              </summary>
+              <ol className="list-decimal list-inside px-4 pb-3 pt-1 text-xs text-white/60 space-y-1 leading-relaxed">
+                <li>
+                  Go to{" "}
+                  <a
+                    href="https://github.com/settings/personal-access-tokens/new"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline text-white/80"
+                  >
+                    github.com/settings/personal-access-tokens/new
+                  </a>{" "}
+                  → fine-grained PAT
+                </li>
+                <li>
+                  Repository access:{" "}
+                  <code className="text-white/80">plantrock1/ar-portfolio</code>
+                </li>
+                <li>
+                  Permissions → <strong>Actions: Read and write</strong>
+                </li>
+                <li>Copy the generated token</li>
+                <li>
+                  In Vercel project settings → Environment Variables, add:
+                  <ul className="list-disc list-inside pl-4 pt-1">
+                    <li>
+                      <code className="text-white/80">GITHUB_PAT</code> = the
+                      token
+                    </li>
+                    <li>
+                      <code className="text-white/80">GITHUB_AR_SLUG</code> ={" "}
+                      <code className="text-white/80">alec</code> /{" "}
+                      <code className="text-white/80">chase</code> /{" "}
+                      <code className="text-white/80">aidan</code>
+                    </li>
+                  </ul>
+                </li>
+                <li>Redeploy (Vercel → Deployments → Redeploy latest)</li>
+              </ol>
+            </details>
+          </div>
+        ) : null}
       </section>
 
       <section>
