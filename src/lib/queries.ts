@@ -327,13 +327,22 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
         AND ts.streams IS NOT NULL
       ORDER BY tr.spotify_id, tr.is_primary DESC, ts.captured_at DESC
     ),
-    -- For each unique recording (ISRC or spotify_id fallback), keep the
-    -- row with the highest streams — usually the primary release.
+    -- Stage 1: dedup by ISRC (same recording, different distributor)
     best_per_recording AS (
       SELECT DISTINCT ON (COALESCE(isrc, spotify_id))
         spotify_id, name, album_image_url, artist_id, streams
       FROM latest_track
       ORDER BY COALESCE(isrc, spotify_id), streams DESC
+    ),
+    -- Stage 2: dedup same-title remasters / re-registrations per artist
+    best_per_song AS (
+      SELECT DISTINCT ON (artist_id, LOWER(TRIM(REGEXP_REPLACE(name, '\\s+', ' ', 'g'))))
+        spotify_id, name, album_image_url, artist_id, streams
+      FROM best_per_recording
+      ORDER BY
+        artist_id,
+        LOWER(TRIM(REGEXP_REPLACE(name, '\\s+', ' ', 'g'))),
+        streams DESC
     )
     SELECT
       lt.spotify_id,
@@ -342,7 +351,7 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
       lt.streams::text AS streams,
       a.name AS artist_name,
       a.slug AS artist_slug
-    FROM best_per_recording lt
+    FROM best_per_song lt
     JOIN artists a ON a.id = lt.artist_id
     ORDER BY lt.streams DESC
     LIMIT ${limit}
