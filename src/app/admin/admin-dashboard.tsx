@@ -114,6 +114,11 @@ export function AdminDashboard({
   const [run, setRun] = useState<RefreshRun | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const shallowAbortRef = useRef<AbortController | null>(null);
+  const [gha, setGha] = useState<{ configured: boolean; slug: string | null }>({
+    configured: false,
+    slug: null,
+  });
+  const [isTriggeringGha, startTriggerGha] = useTransition();
 
   function startPolling() {
     stopPolling();
@@ -296,6 +301,55 @@ export function AdminDashboard({
     await fetch("/api/admin/refresh-cancel", { method: "POST" });
     shallowAbortRef.current?.abort();
   }
+
+  // Load GHA trigger configuration on mount so we know whether to show
+  // the "Triggered on GitHub" flow vs. setup instructions.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/trigger-workflow", {
+          cache: "no-store",
+        });
+        if (res.ok) setGha(await res.json());
+      } catch {
+        // Endpoint not yet deployed or unauth; leave as default (not configured)
+      }
+    })();
+  }, []);
+
+  async function triggerGhaRefresh(type: "shallow" | "deep") {
+    setError(null);
+    setMessage(null);
+    setRun(optimisticRun(type));
+    const res = await fetch("/api/admin/trigger-workflow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type }),
+    });
+    const data = await parseResponse(res);
+    if (!res.ok) {
+      setError(data.error ?? "Failed to trigger workflow");
+      setRun(null);
+      return;
+    }
+    setMessage(
+      `Triggered on GitHub. Progress appears here once the job starts (~30s). ` +
+        `Live logs: ${data.workflowUrl}`,
+    );
+    startTriggerGha(() => router.refresh());
+    // Start polling — once the GHA job begins it writes to refresh_runs
+    // and our poller picks it up automatically.
+    startPolling();
+  }
+
+  // Direct GitHub URLs per A&R. Falls back to the top-level actions tab if
+  // we don't know the slug (e.g. env var not yet set).
+  const ghaShallowUrl = gha.slug
+    ? `https://github.com/plantrock1/ar-portfolio/actions/workflows/shallow-refresh-${gha.slug}.yml`
+    : "https://github.com/plantrock1/ar-portfolio/actions";
+  const ghaDeepUrl = gha.slug
+    ? `https://github.com/plantrock1/ar-portfolio/actions/workflows/deep-refresh-${gha.slug}.yml`
+    : "https://github.com/plantrock1/ar-portfolio/actions";
 
   async function deepRefresh() {
     setError(null);
@@ -963,6 +1017,129 @@ export function AdminDashboard({
               run manually anytime.
             </div>
           </div>
+        </div>
+
+        {/* ---------- Reliable (GitHub Actions) refresh ---------- */}
+        <div className="mt-6 rounded-lg border border-white/10 bg-black/30 p-4">
+          <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
+            <h3 className="text-sm text-white font-medium">
+              Reliable refresh via GitHub Actions
+            </h3>
+            <span
+              className={`text-[10px] uppercase tracking-widest rounded-full border px-2 py-0.5 ${
+                gha.configured
+                  ? "text-green-400 bg-green-500/10 border-green-500/20"
+                  : "text-white/40 bg-white/5 border-white/10"
+              }`}
+            >
+              {gha.configured ? "Configured" : "Not configured"}
+            </span>
+          </div>
+          <p className="text-xs text-white/50 leading-relaxed mb-3">
+            Runs the same refresh on GitHub&apos;s infrastructure instead of
+            Vercel — no 60-second timeout, rotating IPs that are less
+            rate-limited by Spotify. Best for rosters over ~15 artists or
+            when the Vercel refresh is missing data.
+          </p>
+          {gha.configured ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => triggerGhaRefresh("shallow")}
+                disabled={isTriggeringGha || (run?.status === "running")}
+                className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
+                title="Kicks off a full shallow refresh on GitHub (3–10 min depending on roster size)."
+              >
+                {isTriggeringGha ? "Triggering…" : "Reliable refresh"}
+              </button>
+              <button
+                onClick={() => triggerGhaRefresh("deep")}
+                disabled={isTriggeringGha || (run?.status === "running")}
+                className="rounded-lg bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
+                title="Kicks off a full deep refresh on GitHub (15 min–1 hr)."
+              >
+                {isTriggeringGha ? "Triggering…" : "Reliable deep refresh"}
+              </button>
+              <span className="text-white/30 text-xs px-1">or open on GitHub:</span>
+              <a
+                href={ghaShallowUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-white/60 hover:text-white underline underline-offset-2"
+              >
+                Shallow workflow ↗
+              </a>
+              <a
+                href={ghaDeepUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-white/60 hover:text-white underline underline-offset-2"
+              >
+                Deep workflow ↗
+              </a>
+            </div>
+          ) : (
+            <div>
+              <details className="rounded border border-white/10 bg-black/30 mb-3">
+                <summary className="cursor-pointer px-3 py-2 text-xs text-white/60 hover:text-white">
+                  How to enable (one-time setup, ~5 min) →
+                </summary>
+                <ol className="list-decimal list-inside px-4 pb-3 pt-1 text-xs text-white/60 space-y-1 leading-relaxed">
+                  <li>
+                    Go to{" "}
+                    <a
+                      href="https://github.com/settings/personal-access-tokens/new"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline text-white/80"
+                    >
+                      github.com/settings/personal-access-tokens/new
+                    </a>{" "}
+                    → create a fine-grained PAT
+                  </li>
+                  <li>
+                    Repository access:{" "}
+                    <code className="text-white/80">plantrock1/ar-portfolio</code>{" "}
+                    only
+                  </li>
+                  <li>
+                    Permissions → <strong>Actions: Read and write</strong>
+                  </li>
+                  <li>Copy the generated token</li>
+                  <li>
+                    In Vercel project settings → Environment Variables, add:
+                    <ul className="list-disc list-inside pl-4 pt-1">
+                      <li>
+                        <code className="text-white/80">GITHUB_PAT</code> = the
+                        token you just created
+                      </li>
+                      <li>
+                        <code className="text-white/80">GITHUB_AR_SLUG</code> ={" "}
+                        <code className="text-white/80">alec</code> /{" "}
+                        <code className="text-white/80">chase</code> /{" "}
+                        <code className="text-white/80">aidan</code>{" "}
+                        (matching your workflow filename)
+                      </li>
+                    </ul>
+                  </li>
+                  <li>Redeploy (Vercel → Deployments → Redeploy latest)</li>
+                </ol>
+              </details>
+              <p className="text-xs text-white/50 mb-2">
+                Until then, you can still trigger the workflow manually on
+                GitHub:
+              </p>
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <a
+                  href="https://github.com/plantrock1/ar-portfolio/actions"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg border border-white/15 px-3 py-1.5 text-white/70 hover:text-white hover:bg-white/5"
+                >
+                  Open GitHub Actions ↗
+                </a>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
