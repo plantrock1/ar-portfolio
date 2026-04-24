@@ -264,10 +264,14 @@ export function AdminDashboard({
     if (final.ok) setRun((await final.json()).run ?? null);
 
     const elapsedSec = Math.round((Date.now() - runStart) / 1000);
+    const missText =
+      totalMisses > 0
+        ? ` · ${totalMisses} artist${totalMisses === 1 ? "" : "s"} kept their previous value (page load timeout)`
+        : "";
     setMessage(
       `Refreshed ${totalArtists} artists · ${totalHits}/${
         totalHits + totalMisses
-      } monthly listener scrapes succeeded · ${elapsedSec}s`,
+      } succeeded · ${elapsedSec}s${missText}`,
     );
     startRefresh(() => router.refresh());
     void totalTracks;

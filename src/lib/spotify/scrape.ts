@@ -287,16 +287,24 @@ async function scrapeArtistPage(
       waitUntil: "domcontentloaded",
       timeout: 30_000,
     });
-    await page
-      .waitForSelector('[data-testid^="tracklist-row"]', { timeout: 15_000 })
-      .catch(() => null);
     await dismissCookieBanner(page);
+
+    // Wait for the actual data we're extracting: the "X monthly listeners"
+    // text in the body. This hydrates later than the tracklist skeleton, so
+    // waiting for the selector only isn't sufficient — we'd miss artists
+    // whose listener counter is still loading when we read.
+    await page
+      .waitForFunction(
+        () => /[\d,\.]+\s+monthly listeners/i.test(document.body.innerText),
+        { timeout: 15_000 },
+      )
+      .catch(() => null);
 
     if (skipAlbums) {
       // Fast path: monthly listeners + top-5 tracks are in the hero; no
       // need to scroll for album links.
       await page.evaluate(() => window.scrollTo(0, 400)).catch(() => {});
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, 600));
     } else {
       // Deep path: scroll to bottom to let the discography hydrate with
       // lazy-loaded album tiles, then come back up.
