@@ -62,20 +62,38 @@ export async function runRefresh(): Promise<RefreshReport> {
   try {
     await updateRun({ phase: "artists", message: "Scraping artist pages…" });
 
+    // Guard the whole shallow refresh against a server timeout budget. If
+    // we're close to it (e.g., Vercel Hobby's 60s), skip the retry pass so
+    // we don't run past the deadline mid-scrape.
+    const BUDGET_MS = 55_000; // leave ~5s headroom for DB writes
+    const startMs = Date.now();
+
     const spotifyIds = roster.map((a) => a.spotifyId);
     let scraped = await scrapeArtistPages(spotifyIds, {
       spDc: session.spDc,
       concurrency: 3,
+      onOne: async (done, total, r) => {
+        await updateRun({
+          phase: "artists",
+          artistIndex: done,
+          artistTotal: total,
+          message:
+            r.monthlyListeners !== null
+              ? `Scraped ${done}/${total} · last: ${r.spotifyId.slice(0, 8)}…`
+              : `Scraped ${done}/${total} (miss on ${r.spotifyId.slice(0, 8)}…)`,
+        });
+      },
     });
 
     // Retry the ones that came back empty — catches flaky page loads and
-    // Spotify rate-limit hiccups. Small delay to let any rate-limit cool off.
+    // Spotify rate-limit hiccups. Only if we still have time budget left.
     const misses = scraped.filter((s) => s.monthlyListeners === null);
-    if (misses.length > 0) {
+    const elapsed = Date.now() - startMs;
+    if (misses.length > 0 && elapsed < BUDGET_MS * 0.6) {
       await updateRun({
         message: `Retrying ${misses.length} missed artist${misses.length === 1 ? "" : "s"}…`,
       });
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 1500));
       const retryIds = misses.map((m) => m.spotifyId);
       const retried = await scrapeArtistPages(retryIds, {
         spDc: session.spDc,

@@ -85,6 +85,11 @@ export async function completeRun(report: RefreshStatus["status"], error?: strin
     .where(eq(schema.refreshRuns.id, "current"));
 }
 
+// If a run is marked "running" but hasn't written any progress in this window,
+// we treat it as dead (Vercel function timeout, browser kill, etc.) and surface
+// it as "failed" so the UI doesn't hang on "running" forever.
+const STALE_RUNNING_MS = 3 * 60 * 1000;
+
 export async function getCurrentRun(): Promise<RefreshStatus | null> {
   const rows = await db
     .select()
@@ -92,9 +97,22 @@ export async function getCurrentRun(): Promise<RefreshStatus | null> {
     .where(eq(schema.refreshRuns.id, "current"));
   const r = rows[0];
   if (!r) return null;
+
+  let status = r.status as RefreshStatus["status"];
+  let error = r.error;
+  if (status === "running") {
+    const since = Date.now() - new Date(r.updatedAt).getTime();
+    if (since > STALE_RUNNING_MS) {
+      status = "failed";
+      error =
+        error ??
+        "Run appears to have stopped mid-flight (likely hit the server time limit). Try again.";
+    }
+  }
+
   return {
     kind: r.kind as RefreshStatus["kind"],
-    status: r.status as RefreshStatus["status"],
+    status,
     phase: r.phase,
     message: r.message,
     artistIndex: r.artistIndex,
@@ -105,6 +123,6 @@ export async function getCurrentRun(): Promise<RefreshStatus | null> {
     startedAt: new Date(r.startedAt),
     updatedAt: new Date(r.updatedAt),
     completedAt: r.completedAt ? new Date(r.completedAt) : null,
-    error: r.error,
+    error,
   };
 }

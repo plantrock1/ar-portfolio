@@ -217,7 +217,16 @@ export async function checkSession(spDc: string): Promise<SessionCheck> {
 
 export async function scrapeArtistPages(
   spotifyIds: string[],
-  opts: { spDc?: string | null; concurrency?: number } = {},
+  opts: {
+    spDc?: string | null;
+    concurrency?: number;
+    /** Called after each artist finishes; useful for live progress. */
+    onOne?: (
+      done: number,
+      total: number,
+      result: ScrapedArtistPage,
+    ) => Promise<void> | void;
+  } = {},
 ): Promise<ScrapedArtistPage[]> {
   if (spotifyIds.length === 0) return [];
   const concurrency = opts.concurrency ?? 3;
@@ -225,16 +234,28 @@ export async function scrapeArtistPages(
   try {
     const results: ScrapedArtistPage[] = [];
     const queue = [...spotifyIds];
+    const total = spotifyIds.length;
+    let done = 0;
     async function worker() {
       while (queue.length) {
         const id = queue.shift();
         if (!id) return;
         const page = await browser.newPage();
+        let result: ScrapedArtistPage;
         try {
           await setupPage(page, opts.spDc);
-          results.push(await scrapeArtistPage(page, id));
+          result = await scrapeArtistPage(page, id);
         } finally {
           await page.close().catch(() => {});
+        }
+        results.push(result);
+        done += 1;
+        if (opts.onOne) {
+          try {
+            await opts.onOne(done, total, result);
+          } catch {
+            // progress reporting must never break the scrape
+          }
         }
       }
     }
