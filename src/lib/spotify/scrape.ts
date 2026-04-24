@@ -227,6 +227,8 @@ export async function scrapeArtistPages(
      * artist and keeps us well inside Vercel's 60s function budget.
      */
     skipAlbums?: boolean;
+    /** Per-page wait for the "X monthly listeners" text to hydrate. */
+    listenerTimeoutMs?: number;
     /** Called after each artist finishes; useful for live progress. */
     onOne?: (
       done: number,
@@ -251,7 +253,12 @@ export async function scrapeArtistPages(
         let result: ScrapedArtistPage;
         try {
           await setupPage(page, opts.spDc);
-          result = await scrapeArtistPage(page, id, opts.skipAlbums);
+          result = await scrapeArtistPage(
+            page,
+            id,
+            opts.skipAlbums,
+            opts.listenerTimeoutMs,
+          );
         } finally {
           await page.close().catch(() => {});
         }
@@ -281,6 +288,7 @@ async function scrapeArtistPage(
   page: Page,
   spotifyId: string,
   skipAlbums = false,
+  listenerTimeoutMs = 8_000,
 ): Promise<ScrapedArtistPage> {
   try {
     await page.goto(`https://open.spotify.com/artist/${spotifyId}`, {
@@ -290,12 +298,12 @@ async function scrapeArtistPage(
     await dismissCookieBanner(page);
 
     // Wait for the actual data we're extracting: the "X monthly listeners"
-    // text in the body. 8s is plenty — if it's not there by then, the page
-    // is struggling and more waiting won't help.
+    // text in the body. Default 8s for the fast first pass; retry pass
+    // bumps this to 15s for known slow loaders.
     await page
       .waitForFunction(
         () => /[\d,\.]+\s+monthly listeners/i.test(document.body.innerText),
-        { timeout: 8_000 },
+        { timeout: listenerTimeoutMs },
       )
       .catch(() => null);
 

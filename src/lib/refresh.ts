@@ -129,10 +129,13 @@ export async function runRefresh(
       });
       await new Promise((r) => setTimeout(r, 1500));
       const retryIds = misses.map((m) => m.spotifyId);
+      // Retry: serial + longer listener wait. Slower per page but far more
+      // likely to catch slow-hydrating artist pages the fast first pass missed.
       const retried = await scrapeArtistPages(retryIds, {
         spDc: session.spDc,
-        concurrency: 2,
+        concurrency: 1,
         skipAlbums: true,
+        listenerTimeoutMs: 15_000,
       });
       const retriedById = new Map(retried.map((s) => [s.spotifyId, s]));
       scraped = scraped.map((s) => {
