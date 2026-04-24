@@ -290,13 +290,12 @@ async function scrapeArtistPage(
     await dismissCookieBanner(page);
 
     // Wait for the actual data we're extracting: the "X monthly listeners"
-    // text in the body. This hydrates later than the tracklist skeleton, so
-    // waiting for the selector only isn't sufficient — we'd miss artists
-    // whose listener counter is still loading when we read.
+    // text in the body. 8s is plenty — if it's not there by then, the page
+    // is struggling and more waiting won't help.
     await page
       .waitForFunction(
         () => /[\d,\.]+\s+monthly listeners/i.test(document.body.innerText),
-        { timeout: 15_000 },
+        { timeout: 8_000 },
       )
       .catch(() => null);
 

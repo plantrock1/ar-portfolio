@@ -228,7 +228,7 @@ export function AdminDashboard({
     // stay comfortably under Vercel's 60-second function timeout no matter
     // how large the roster is. Progress bar updates via the status poller
     // while each chunk runs.
-    const CHUNK = 3;
+    const CHUNK = 5;
     let offset = 0;
     let totalArtists = 0;
     let totalHits = 0;

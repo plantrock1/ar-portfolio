@@ -90,14 +90,17 @@ export async function runRefresh(
     const startMs = Date.now();
 
     const spotifyIds = roster.map((a) => a.spotifyId);
+    // Shallow refresh: skip the auth cookie entirely. Monthly listeners +
+    // top-5 tracks render on the anonymous public page, and skipping the
+    // cookie lets us run higher concurrency without Spotify's "too many
+    // tabs" gate (which only triggers on shared authenticated sessions).
     let scraped = await scrapeArtistPages(spotifyIds, {
-      spDc: session.spDc,
-      concurrency: 3,
-      skipAlbums: true, // shallow refresh doesn't need album IDs
+      spDc: null,
+      concurrency: 5,
+      skipAlbums: true,
       onOne: async (done, total, r) => {
         await updateRun({
           phase: "artists",
-          // In chunked mode the overall progress is offset + done-in-chunk
           artistIndex: offset + done,
           artistTotal: fullRoster.length,
           message:
@@ -119,8 +122,8 @@ export async function runRefresh(
       await new Promise((r) => setTimeout(r, 1500));
       const retryIds = misses.map((m) => m.spotifyId);
       const retried = await scrapeArtistPages(retryIds, {
-        spDc: session.spDc,
-        concurrency: 2,
+        spDc: null,
+        concurrency: 3,
         skipAlbums: true,
       });
       const retriedById = new Map(retried.map((s) => [s.spotifyId, s]));
