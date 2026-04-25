@@ -150,6 +150,11 @@ export const siteSettings = pgTable("site_settings", {
   showCombinedStreamsNote: boolean("show_combined_streams_note")
     .notNull()
     .default(true),
+  // Same idea, scoped to individual artist pages: appends "(top 5 tracks)"
+  // to the Total streams stat. One global toggle, not per-artist.
+  showArtistStreamsNote: boolean("show_artist_streams_note")
+    .notNull()
+    .default(true),
   sectionOrder: jsonb("section_order")
     .$type<SectionId[]>()
     .notNull()

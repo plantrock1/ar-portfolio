@@ -49,6 +49,7 @@ export function AdminDashboard({
   initialSocials,
   initialShowListenerChart,
   initialShowCombinedStreamsNote,
+  initialShowArtistStreamsNote,
   initialSectionOrder,
   initialRosterDesignations,
   initialPress,
@@ -63,6 +64,7 @@ export function AdminDashboard({
   initialSocials: ArtistSocials;
   initialShowListenerChart: boolean;
   initialShowCombinedStreamsNote: boolean;
+  initialShowArtistStreamsNote: boolean;
   initialSectionOrder: SectionId[];
   initialRosterDesignations: string[];
   initialPress: FeaturedItem[];
@@ -98,6 +100,9 @@ export function AdminDashboard({
   const [showChart, setShowChart] = useState(initialShowListenerChart);
   const [showCombinedStreamsNote, setShowCombinedStreamsNote] = useState(
     initialShowCombinedStreamsNote,
+  );
+  const [showArtistStreamsNote, setShowArtistStreamsNote] = useState(
+    initialShowArtistStreamsNote,
   );
   const [press, setPress] = useState(initialPress);
   const [spDc, setSpDc] = useState("");
@@ -487,6 +492,16 @@ export function AdminDashboard({
     router.refresh();
   }
 
+  async function toggleArtistStreamsNote(next: boolean) {
+    setShowArtistStreamsNote(next);
+    await fetch("/api/admin/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ showArtistStreamsNote: next }),
+    });
+    router.refresh();
+  }
+
   async function saveArtist(
     id: string,
     patch: {
@@ -870,6 +885,16 @@ export function AdminDashboard({
             />
             Note that Combined Streams reflects top 5 tracks per artist (turn
             off after a fresh deep refresh covers the full catalog)
+          </label>
+          <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showArtistStreamsNote}
+              onChange={(e) => toggleArtistStreamsNote(e.target.checked)}
+              className="accent-[#1db954]"
+            />
+            Note that each artist&apos;s Total Streams reflects top 5 tracks
+            (applies to all artist pages)
           </label>
         </div>
         <div className="mt-3 flex items-center justify-end gap-3">

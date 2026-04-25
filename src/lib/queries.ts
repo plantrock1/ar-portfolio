@@ -380,6 +380,7 @@ export async function getSiteSettings(): Promise<{
   socials: import("@/lib/db/schema").ArtistSocials;
   showListenerChart: boolean;
   showCombinedStreamsNote: boolean;
+  showArtistStreamsNote: boolean;
   sectionOrder: import("@/lib/db/schema").SectionId[];
   rosterDesignations: string[];
 }> {
@@ -396,6 +397,7 @@ export async function getSiteSettings(): Promise<{
       socials: {},
       showListenerChart: false,
       showCombinedStreamsNote: true,
+      showArtistStreamsNote: true,
       sectionOrder: DEFAULT_SECTION_ORDER,
       rosterDesignations: [],
     };
@@ -407,6 +409,7 @@ export async function getSiteSettings(): Promise<{
     socials: rows[0].socials ?? {},
     showListenerChart: rows[0].showListenerChart,
     showCombinedStreamsNote: rows[0].showCombinedStreamsNote ?? true,
+    showArtistStreamsNote: rows[0].showArtistStreamsNote ?? true,
     sectionOrder:
       (rows[0].sectionOrder?.length ?? 0) > 0
         ? rows[0].sectionOrder!

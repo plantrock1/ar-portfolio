@@ -40,6 +40,7 @@ export default async function AdminPage() {
         initialSocials={settings.socials}
         initialShowListenerChart={settings.showListenerChart}
         initialShowCombinedStreamsNote={settings.showCombinedStreamsNote}
+        initialShowArtistStreamsNote={settings.showArtistStreamsNote}
         initialSectionOrder={settings.sectionOrder}
         initialRosterDesignations={settings.rosterDesignations}
         initialPress={press.map((p) => ({

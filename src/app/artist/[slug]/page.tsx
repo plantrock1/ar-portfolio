@@ -134,7 +134,11 @@ export default async function ArtistPage({
               value={latest?.monthlyListeners ? Number(latest.monthlyListeners) : null}
             />
             <Stat
-              label="Total streams"
+              label={
+                settings.showArtistStreamsNote
+                  ? "Total streams (top 5 tracks)"
+                  : "Total streams"
+              }
               value={totalStreams || null}
             />
           </div>
