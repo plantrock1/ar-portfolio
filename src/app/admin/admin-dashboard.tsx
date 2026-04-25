@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type { Artist, ArtistSocials, SectionId } from "@/lib/db/schema";
+import { ImageCropModal } from "@/components/admin/image-crop-modal";
 
 const SECTION_LABELS: Record<SectionId, string> = {
   roster: "Roster",
@@ -1582,6 +1583,9 @@ function FeaturedSection({
   const [imgError, setImgError] = useState<string | null>(null);
   const [src, setSrc] = useState("");
   const [adding, setAdding] = useState(false);
+  // When non-null, we show the 16:9 crop modal over the original upload.
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropFileName, setCropFileName] = useState<string | null>(null);
 
   async function onPickFile(file: File) {
     setImgError(null);
@@ -1599,8 +1603,11 @@ function FeaturedSection({
       r.onerror = () => reject(r.error);
       r.readAsDataURL(file);
     });
-    setImg(dataUrl);
-    setImgName(file.name);
+    // Open the cropper instead of using the raw image directly. The card
+    // is 16:9 with object-cover, so portrait/square uploads get arbitrarily
+    // cropped by the browser otherwise.
+    setCropSrc(dataUrl);
+    setCropFileName(file.name);
   }
 
   async function submit(e: React.FormEvent) {
@@ -1693,6 +1700,15 @@ function FeaturedSection({
               <span className="text-green-400">
                 ✓ {imgName ?? "image attached"}
               </span>
+              {img.startsWith("data:") ? (
+                <button
+                  type="button"
+                  onClick={() => setCropSrc(img)}
+                  className="text-white/60 hover:text-white"
+                >
+                  recrop
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => {
@@ -1710,6 +1726,21 @@ function FeaturedSection({
           ) : null}
         </div>
       </form>
+      {cropSrc ? (
+        <ImageCropModal
+          src={cropSrc}
+          onCancel={() => {
+            setCropSrc(null);
+            setCropFileName(null);
+          }}
+          onSave={(cropped) => {
+            setImg(cropped);
+            setImgName(cropFileName ?? imgName ?? "cropped image");
+            setCropSrc(null);
+            setCropFileName(null);
+          }}
+        />
+      ) : null}
 
       {items.length === 0 ? (
         <div className="mt-4 rounded-xl border border-dashed border-white/10 p-6 text-center text-white/40 text-sm">
@@ -1763,6 +1794,9 @@ function FeaturedItemRow({
   const [imgName, setImgName] = useState<string | null>(null);
   const [imgError, setImgError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // 16:9 crop UI for new uploads + recrop on existing data-URL images.
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropFileName, setCropFileName] = useState<string | null>(null);
 
   // Keep local form state in sync when the parent prop updates (e.g., after
   // saving, or switching to a different item).
@@ -1791,8 +1825,9 @@ function FeaturedItemRow({
       r.onerror = () => reject(r.error);
       r.readAsDataURL(file);
     });
-    setImg(dataUrl);
-    setImgName(file.name);
+    // Open the cropper instead of using the raw upload as the image.
+    setCropSrc(dataUrl);
+    setCropFileName(file.name);
   }
 
   async function save() {
@@ -1922,6 +1957,16 @@ function FeaturedItemRow({
                 placeholder="Paste image URL"
                 className="flex-1 min-w-[200px] rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
               />
+              {img && img.startsWith("data:") ? (
+                <button
+                  type="button"
+                  onClick={() => setCropSrc(img)}
+                  className="text-xs text-white/60 hover:text-white"
+                  title="Re-frame the existing image"
+                >
+                  Recrop
+                </button>
+              ) : null}
               {img ? (
                 <button
                   type="button"
@@ -1961,6 +2006,21 @@ function FeaturedItemRow({
             </button>
           </div>
         </div>
+      ) : null}
+      {cropSrc ? (
+        <ImageCropModal
+          src={cropSrc}
+          onCancel={() => {
+            setCropSrc(null);
+            setCropFileName(null);
+          }}
+          onSave={(cropped) => {
+            setImg(cropped);
+            setImgName(cropFileName ?? imgName ?? "cropped image");
+            setCropSrc(null);
+            setCropFileName(null);
+          }}
+        />
       ) : null}
     </li>
   );
