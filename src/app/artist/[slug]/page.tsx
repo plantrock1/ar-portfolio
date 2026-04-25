@@ -159,7 +159,7 @@ export default async function ArtistPage({
         <div className="divider" />
 
         <section className="pt-12">
-          <h3 className="display text-2xl text-white mb-6">Top 5 tracks</h3>
+          <h3 className="display text-2xl text-white mb-6">Top tracks</h3>
           {tracks.length === 0 ? (
             <div className="text-sm text-white/40">
               No tracks loaded yet — they'll appear after the next refresh.
