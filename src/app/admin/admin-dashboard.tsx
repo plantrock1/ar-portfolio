@@ -46,6 +46,7 @@ export function AdminDashboard({
   initialBioPhotoUrl,
   initialSocials,
   initialShowListenerChart,
+  initialShowCombinedStreamsNote,
   initialSectionOrder,
   initialRosterDesignations,
   initialPress,
@@ -59,6 +60,7 @@ export function AdminDashboard({
   initialBioPhotoUrl: string | null;
   initialSocials: ArtistSocials;
   initialShowListenerChart: boolean;
+  initialShowCombinedStreamsNote: boolean;
   initialSectionOrder: SectionId[];
   initialRosterDesignations: string[];
   initialPress: FeaturedItem[];
@@ -92,6 +94,9 @@ export function AdminDashboard({
     initialSocials ?? {},
   );
   const [showChart, setShowChart] = useState(initialShowListenerChart);
+  const [showCombinedStreamsNote, setShowCombinedStreamsNote] = useState(
+    initialShowCombinedStreamsNote,
+  );
   const [press, setPress] = useState(initialPress);
   const [spDc, setSpDc] = useState("");
   const [sessionState, setSessionState] = useState(session);
@@ -470,6 +475,16 @@ export function AdminDashboard({
     router.refresh();
   }
 
+  async function toggleCombinedStreamsNote(next: boolean) {
+    setShowCombinedStreamsNote(next);
+    await fetch("/api/admin/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ showCombinedStreamsNote: next }),
+    });
+    router.refresh();
+  }
+
   async function saveArtist(
     id: string,
     patch: {
@@ -834,7 +849,7 @@ export function AdminDashboard({
             ))}
           </ul>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="mt-3 flex flex-col gap-2">
           <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -844,6 +859,18 @@ export function AdminDashboard({
             />
             Show monthly listeners growth chart on artist pages
           </label>
+          <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showCombinedStreamsNote}
+              onChange={(e) => toggleCombinedStreamsNote(e.target.checked)}
+              className="accent-[#1db954]"
+            />
+            Note that Combined Streams reflects top 5 tracks per artist (turn
+            off after a fresh deep refresh covers the full catalog)
+          </label>
+        </div>
+        <div className="mt-3 flex items-center justify-end gap-3">
           <div className="flex items-center gap-3">
             <span className="text-xs text-white/40">
               {bio.length}/2000 chars

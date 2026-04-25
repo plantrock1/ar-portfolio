@@ -46,6 +46,7 @@ const Body = z
     bio: z.string().max(2000).optional(),
     bioPhotoUrl: BioPhoto.optional().or(z.null()),
     showListenerChart: z.boolean().optional(),
+    showCombinedStreamsNote: z.boolean().optional(),
     socials: SocialsSchema.optional(),
     sectionOrder: SectionOrderSchema.optional(),
     rosterDesignations: RosterDesignationsSchema.optional(),
@@ -57,6 +58,7 @@ const Body = z
       v.bio !== undefined ||
       v.bioPhotoUrl !== undefined ||
       v.showListenerChart !== undefined ||
+      v.showCombinedStreamsNote !== undefined ||
       v.socials !== undefined ||
       v.sectionOrder !== undefined ||
       v.rosterDesignations !== undefined,
@@ -81,6 +83,8 @@ export async function POST(req: NextRequest) {
     patch.bioPhotoUrl = parsed.data.bioPhotoUrl || null;
   if (parsed.data.showListenerChart !== undefined)
     patch.showListenerChart = parsed.data.showListenerChart;
+  if (parsed.data.showCombinedStreamsNote !== undefined)
+    patch.showCombinedStreamsNote = parsed.data.showCombinedStreamsNote;
   const cleanedSocials = parsed.data.socials
     ? Object.fromEntries(
         Object.entries(parsed.data.socials).filter(
@@ -115,6 +119,7 @@ export async function POST(req: NextRequest) {
       bio: parsed.data.bio ?? "",
       bioPhotoUrl: parsed.data.bioPhotoUrl || null,
       showListenerChart: parsed.data.showListenerChart ?? false,
+      showCombinedStreamsNote: parsed.data.showCombinedStreamsNote ?? true,
       socials: cleanedSocials ?? {},
     })
     .onConflictDoUpdate({

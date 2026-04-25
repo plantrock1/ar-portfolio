@@ -379,6 +379,7 @@ export async function getSiteSettings(): Promise<{
   bioPhotoUrl: string | null;
   socials: import("@/lib/db/schema").ArtistSocials;
   showListenerChart: boolean;
+  showCombinedStreamsNote: boolean;
   sectionOrder: import("@/lib/db/schema").SectionId[];
   rosterDesignations: string[];
 }> {
@@ -394,6 +395,7 @@ export async function getSiteSettings(): Promise<{
       bioPhotoUrl: null,
       socials: {},
       showListenerChart: false,
+      showCombinedStreamsNote: true,
       sectionOrder: DEFAULT_SECTION_ORDER,
       rosterDesignations: [],
     };
@@ -404,6 +406,7 @@ export async function getSiteSettings(): Promise<{
     bioPhotoUrl: rows[0].bioPhotoUrl ?? null,
     socials: rows[0].socials ?? {},
     showListenerChart: rows[0].showListenerChart,
+    showCombinedStreamsNote: rows[0].showCombinedStreamsNote ?? true,
     sectionOrder:
       (rows[0].sectionOrder?.length ?? 0) > 0
         ? rows[0].sectionOrder!

@@ -39,6 +39,7 @@ export default async function AdminPage() {
         initialBioPhotoUrl={settings.bioPhotoUrl}
         initialSocials={settings.socials}
         initialShowListenerChart={settings.showListenerChart}
+        initialShowCombinedStreamsNote={settings.showCombinedStreamsNote}
         initialSectionOrder={settings.sectionOrder}
         initialRosterDesignations={settings.rosterDesignations}
         initialPress={press.map((p) => ({

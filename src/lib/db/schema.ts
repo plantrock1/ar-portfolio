@@ -143,6 +143,13 @@ export const siteSettings = pgTable("site_settings", {
   bioPhotoUrl: text("bio_photo_url"),
   socials: jsonb("socials").$type<ArtistSocials>().notNull().default({}),
   showListenerChart: boolean("show_listener_chart").notNull().default(false),
+  // Appends "(top 5 tracks per artist)" to the Combined Streams stat on the
+  // home page. Default true because deep-refresh isn't always current —
+  // owners can flip it off after a fresh deep refresh covers their full
+  // catalog.
+  showCombinedStreamsNote: boolean("show_combined_streams_note")
+    .notNull()
+    .default(true),
   sectionOrder: jsonb("section_order")
     .$type<SectionId[]>()
     .notNull()
