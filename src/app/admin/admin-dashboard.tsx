@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type { Artist, ArtistSocials, SectionId } from "@/lib/db/schema";
 import { ImageCropModal } from "@/components/admin/image-crop-modal";
+import { renderInlineItalics } from "@/lib/inline-markdown";
 
 const SECTION_LABELS: Record<SectionId, string> = {
   roster: "Roster",
@@ -1639,7 +1640,9 @@ function FeaturedSection({
       </div>
       <p className="text-xs text-white/50 mb-4">
         Articles, videos, interviews. YouTube links auto-fetch thumbnails.
-        Hidden from the home page when empty.
+        Hidden from the home page when empty. Wrap text in{" "}
+        <code className="text-white/70">*asterisks*</code> in the title to
+        render it <em>italic</em> (e.g., album names).
       </p>
 
       <form onSubmit={submit} className="grid md:grid-cols-[1fr_1fr_auto] gap-2 mb-2">
@@ -1856,7 +1859,9 @@ function FeaturedItemRow({
           <div className="w-16 h-10 rounded bg-neutral-800" />
         )}
         <div className="flex-1 min-w-0">
-          <div className="text-white text-sm truncate">{item.title}</div>
+          <div className="text-white text-sm truncate">
+            {renderInlineItalics(item.title)}
+          </div>
           <div className="text-xs text-white/40 truncate">
             {item.source ? `${item.source} · ` : ""}
             {item.url}
@@ -1895,6 +1900,13 @@ function FeaturedItemRow({
                 onChange={(e) => setTitle(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30"
               />
+              <div className="mt-1 text-[10px] text-white/40">
+                <code className="text-white/60">*asterisks*</code> become{" "}
+                <em>italics</em>. Preview:{" "}
+                <span className="text-white/70">
+                  {renderInlineItalics(title)}
+                </span>
+              </div>
             </div>
             <div>
               <label className="text-[10px] uppercase tracking-widest text-white/40">

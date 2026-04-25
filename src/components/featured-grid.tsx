@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { renderInlineItalics } from "@/lib/inline-markdown";
 
 type Item = {
   id: string;
@@ -110,7 +111,7 @@ export function FeaturedGrid({ items }: { items: Item[] }) {
                     : "text-white text-sm leading-snug line-clamp-2"
                 }
               >
-                {item.title}
+                {renderInlineItalics(item.title)}
               </div>
             </div>
           </a>
