@@ -297,12 +297,17 @@ async function scrapeArtistPage(
     });
     await dismissCookieBanner(page);
 
-    // Wait for the actual data we're extracting: the "X monthly listeners"
-    // text in the body. Default 8s for the fast first pass; retry pass
-    // bumps this to 15s for known slow loaders.
+    // Wait for the artist's H1 to be present AND for "monthly listeners"
+    // text to render. We anchor to the H1 so that a "featured artist" banner
+    // hydrating earlier doesn't make the wait pass prematurely (the banner's
+    // monthly-listeners text would otherwise satisfy a body-only check).
     await page
       .waitForFunction(
-        () => /[\d,\.]+\s+monthly listeners/i.test(document.body.innerText),
+        () => {
+          const h1 = document.querySelector("h1");
+          if (!h1) return false;
+          return /[\d,\.]+\s+monthly listeners/i.test(document.body.innerText);
+        },
         { timeout: listenerTimeoutMs },
       )
       .catch(() => null);
@@ -324,9 +329,32 @@ async function scrapeArtistPage(
     }
 
     const data = await page.evaluate(() => {
-      const body = document.body.innerText;
-      const mlMatch = body.match(/([\d,\.]+)\s+monthly listeners/i);
-      const monthlyListenersText = mlMatch ? mlMatch[1] : null;
+      // Find the artist's monthly-listeners count by anchoring to the page's
+      // <h1> (the artist name). A "featured artist" / "Wrapped" / promo
+      // banner can render its OWN "X monthly listeners" string elsewhere in
+      // the DOM — matching against document.body.innerText (top-down) used
+      // to grab whichever appeared first, sometimes the banner. Walking up
+      // from the artist H1 keeps us inside the hero container only.
+      const ML_RE = /([\d,\.]+)\s+monthly listeners/i;
+      const h1 = document.querySelector("h1") as HTMLElement | null;
+      let monthlyListenersText: string | null = null;
+      if (h1) {
+        let el: HTMLElement | null = h1.parentElement;
+        for (let depth = 0; el && depth < 8; depth++) {
+          const m = (el.innerText || "").match(ML_RE);
+          if (m) {
+            monthlyListenersText = m[1];
+            break;
+          }
+          el = el.parentElement;
+        }
+      }
+      // Last-resort fallback so we don't lose data on a totally unexpected
+      // layout — but this is the brittle path the H1-walk replaces.
+      if (!monthlyListenersText) {
+        const m = document.body.innerText.match(ML_RE);
+        monthlyListenersText = m ? m[1] : null;
+      }
 
       function biggestNumber(text: string): string | null {
         const cleaned = text.replace(/\d+:\d+/g, " ");
