@@ -446,6 +446,38 @@ async function scrapeArtistPage(
         monthlyListenersText = m ? m[1] : null;
       }
 
+      // Diagnostic dump: emit one structured line we can parse from GHA
+      // logs to see *every* candidate when the wrong number gets picked.
+      // describePath returns a short DOM signature so we can identify the
+      // container without dumping huge HTML blobs.
+      function describePath(el: HTMLElement | null): string {
+        if (!el) return "?";
+        const parts: string[] = [];
+        let cur: HTMLElement | null = el;
+        for (let i = 0; cur && i < 6; i++) {
+          let part = cur.tagName.toLowerCase();
+          const tid = cur.getAttribute("data-testid");
+          if (tid) part += `[testid=${tid}]`;
+          const role = cur.getAttribute("role");
+          if (role) part += `[role=${role}]`;
+          const aria = cur.getAttribute("aria-label");
+          if (aria) part += `[aria=${aria.slice(0, 30)}]`;
+          parts.unshift(part);
+          cur = cur.parentElement;
+        }
+        return parts.join(">");
+      }
+      const monthlyListenersDebug = {
+        chosen: monthlyListenersText,
+        candidates: pool.length,
+        candidatesAll: candidates.length,
+        promoFiltered: deepest.length - safe.length,
+        details: pool.slice(0, 6).map((c) => ({
+          value: c.value,
+          path: describePath(c.el),
+        })),
+      };
+
       function biggestNumber(text: string): string | null {
         const cleaned = text.replace(/\d+:\d+/g, " ");
         const matches = cleaned.match(/\d{1,3}(?:,\d{3})+|\d{5,}/g);
@@ -518,6 +550,7 @@ async function scrapeArtistPage(
 
       return {
         monthlyListenersText,
+        monthlyListenersDebug,
         tracks,
         albumIds: Array.from(albumIds),
       };
@@ -536,6 +569,22 @@ async function scrapeArtistPage(
       }));
       console.warn(
         `[scrape] no monthly listeners for ${spotifyId} — title="${diag.title}" url="${diag.url}"\n  body: ${diag.snippet}`,
+      );
+    } else if (
+      data.monthlyListenersDebug &&
+      data.monthlyListenersDebug.candidates > 1
+    ) {
+      // When multiple candidates survived filtering, log them all so we can
+      // see in the GHA log which subtree the chosen value came from. This
+      // is the breadcrumb we need to harden the selector list further if a
+      // wrong number gets through.
+      console.warn(
+        `[scrape] ${spotifyId} chose ${data.monthlyListenersDebug.chosen} from ${data.monthlyListenersDebug.candidates} candidates ` +
+          `(${data.monthlyListenersDebug.promoFiltered} dropped by promo filter, ` +
+          `${data.monthlyListenersDebug.candidatesAll} total raw):\n  ` +
+          data.monthlyListenersDebug.details
+            .map((d) => `${d.value}  @  ${d.path}`)
+            .join("\n  "),
       );
     }
 
