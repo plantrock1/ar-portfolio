@@ -329,28 +329,85 @@ async function scrapeArtistPage(
     }
 
     const data = await page.evaluate(() => {
-      // Find the artist's monthly-listeners count by anchoring to the page's
-      // <h1> (the artist name). A "featured artist" / "Wrapped" / promo
-      // banner can render its OWN "X monthly listeners" string elsewhere in
-      // the DOM — matching against document.body.innerText (top-down) used
-      // to grab whichever appeared first, sometimes the banner. Walking up
-      // from the artist H1 keeps us inside the hero container only.
+      // Spotify's artist page can render multiple "X monthly listeners"
+      // strings: the artist's own (in the hero) plus banners, "fans also
+      // like" cards, "discovered on" playlists, etc. The earlier H1-walk
+      // approach was still fooled when the H1's ancestor's innerText
+      // concatenated banner text that appeared earlier in DOM order.
+      //
+      // New approach:
+      //   1. Walk the DOM as text nodes, collect every node whose own text
+      //      matches the listener pattern (each match is one specific
+      //      element, not concatenated parent text).
+      //   2. Drop any whose ancestor chain hits a known promo/aside/related
+      //      module (these are the false positives we keep seeing).
+      //   3. Of what remains, pick the one whose container chain shares the
+      //      most ancestors with the page <h1> — i.e. the listener text
+      //      closest in the DOM to the artist's name.
       const ML_RE = /([\d,\.]+)\s+monthly listeners/i;
-      const h1 = document.querySelector("h1") as HTMLElement | null;
-      let monthlyListenersText: string | null = null;
-      if (h1) {
-        let el: HTMLElement | null = h1.parentElement;
-        for (let depth = 0; el && depth < 8; depth++) {
-          const m = (el.innerText || "").match(ML_RE);
-          if (m) {
-            monthlyListenersText = m[1];
-            break;
-          }
-          el = el.parentElement;
-        }
+      const PROMO_SELECTOR =
+        'aside, [role="banner"], [role="complementary"], ' +
+        '[data-testid*="featured"], [data-testid*="promo"], ' +
+        '[data-testid*="similar-artists"], [data-testid*="fans-also-like"], ' +
+        '[data-testid*="discovered-on"], [data-testid*="related"], ' +
+        '[data-testid*="recommendation"]';
+
+      type Cand = { el: HTMLElement; value: string };
+      const candidates: Cand[] = [];
+      // Walk all elements, but keep only "leaf-ish" containers whose total
+      // textContent is short — these are real listener-count nodes, not
+      // wrapping ancestors. Cap at 120 chars so "459,355 monthly listeners"
+      // (~30 chars) easily fits but the entire hero section (~hundreds)
+      // doesn't. Important: react sometimes splits the number and the words
+      // across sibling spans, so we can't just walk text nodes.
+      const all = document.querySelectorAll<HTMLElement>("*");
+      for (const el of all) {
+        const text = (el.textContent ?? "").trim();
+        if (text.length > 120) continue;
+        const m = text.match(ML_RE);
+        if (!m) continue;
+        candidates.push({ el, value: m[1] });
       }
-      // Last-resort fallback so we don't lose data on a totally unexpected
-      // layout — but this is the brittle path the H1-walk replaces.
+      // Multiple ancestors of a leaf will all match (each accumulates the
+      // child's text into its own textContent). Dedupe to the deepest match
+      // for each unique value-position by keeping only candidates that have
+      // no other candidate as a descendant. (i.e. closest-to-text wins.)
+      const deepest = candidates.filter(
+        (c, _i, arr) =>
+          !arr.some(
+            (other) => other !== c && c.el.contains(other.el),
+          ),
+      );
+
+      const safe = deepest.filter((c) => !c.el.closest(PROMO_SELECTOR));
+      const pool = safe.length > 0 ? safe : deepest;
+
+      let monthlyListenersText: string | null = null;
+      const h1 = document.querySelector("h1") as HTMLElement | null;
+      if (pool.length > 0 && h1) {
+        // Pick the candidate whose nearest common ancestor with H1 is the
+        // shallowest (= closest in DOM tree distance).
+        let best: Cand | null = null;
+        let bestDist = Infinity;
+        for (const c of pool) {
+          let p: HTMLElement | null = c.el;
+          let d = 0;
+          while (p && !p.contains(h1)) {
+            p = p.parentElement;
+            d++;
+            if (d > 30) break; // give up if we'd walk to <html>
+          }
+          if (p && d < bestDist) {
+            bestDist = d;
+            best = c;
+          }
+        }
+        monthlyListenersText = best ? best.value : pool[0].value;
+      } else if (pool.length > 0) {
+        monthlyListenersText = pool[0].value;
+      }
+
+      // Last-resort fallback (no candidates at all).
       if (!monthlyListenersText) {
         const m = document.body.innerText.match(ML_RE);
         monthlyListenersText = m ? m[1] : null;
