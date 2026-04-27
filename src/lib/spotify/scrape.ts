@@ -345,12 +345,45 @@ async function scrapeArtistPage(
       //      most ancestors with the page <h1> — i.e. the listener text
       //      closest in the DOM to the artist's name.
       const ML_RE = /([\d,\.]+)\s+monthly listeners/i;
-      const PROMO_SELECTOR =
-        'aside, [role="banner"], [role="complementary"], ' +
-        '[data-testid*="featured"], [data-testid*="promo"], ' +
-        '[data-testid*="similar-artists"], [data-testid*="fans-also-like"], ' +
-        '[data-testid*="discovered-on"], [data-testid*="related"], ' +
-        '[data-testid*="recommendation"]';
+      // Subtrees we ignore when matching the artist's own listener count.
+      // Notable additions for the now-playing bug: when the scraper auths
+      // with the owner's sp_dc cookie, Spotify renders the currently-
+      // playing track's artist metadata (incl. monthly listeners) inside
+      // the persistent player bar + Now Playing View + friend activity
+      // sidebar. Those numbers belong to whatever the *user* is listening
+      // to, not the artist whose page we're on, so we exclude the entire
+      // chrome of the app from the candidate pool.
+      const PROMO_SELECTOR = [
+        // Layout chrome
+        "aside",
+        "footer",
+        "nav",
+        '[role="banner"]',
+        '[role="complementary"]',
+        '[role="contentinfo"]',
+        // Recommended-artists / related modules within the artist page
+        '[data-testid*="featured"]',
+        '[data-testid*="promo"]',
+        '[data-testid*="similar-artists"]',
+        '[data-testid*="fans-also-like"]',
+        '[data-testid*="discovered-on"]',
+        '[data-testid*="related"]',
+        '[data-testid*="recommendation"]',
+        // Persistent player + Now Playing UI (the now-playing-bug source)
+        '[data-testid*="now-playing"]',
+        '[data-testid*="now_playing"]',
+        '[data-testid*="player"]',
+        '[data-testid*="playback"]',
+        '[data-testid*="buddy-feed"]',
+        '[data-testid*="friend-activity"]',
+        '[aria-label*="Now playing" i]',
+        '[aria-label*="now-playing" i]',
+        '[aria-label*="player" i]',
+        // Tooltips / hover cards that can render artist metadata
+        '[role="tooltip"]',
+        '[data-testid*="tooltip"]',
+        '[data-testid*="hovercard"]',
+      ].join(", ");
 
       type Cand = { el: HTMLElement; value: string };
       const candidates: Cand[] = [];
