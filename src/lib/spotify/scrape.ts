@@ -467,12 +467,19 @@ async function scrapeArtistPage(
         }
         return parts.join(">");
       }
+      const rejected = deepest.filter((c) => c.el.closest(PROMO_SELECTOR));
       const monthlyListenersDebug = {
         chosen: monthlyListenersText,
         candidates: pool.length,
         candidatesAll: candidates.length,
-        promoFiltered: deepest.length - safe.length,
+        promoFiltered: rejected.length,
         details: pool.slice(0, 6).map((c) => ({
+          value: c.value,
+          path: describePath(c.el),
+        })),
+        // Rejected candidates so we can see if the artist's actual hero
+        // got incorrectly filtered out — that's the silent-failure case.
+        rejectedDetails: rejected.slice(0, 6).map((c) => ({
           value: c.value,
           path: describePath(c.el),
         })),
@@ -570,22 +577,25 @@ async function scrapeArtistPage(
       console.warn(
         `[scrape] no monthly listeners for ${spotifyId} — title="${diag.title}" url="${diag.url}"\n  body: ${diag.snippet}`,
       );
-    } else if (
-      data.monthlyListenersDebug &&
-      data.monthlyListenersDebug.candidates > 1
-    ) {
-      // When multiple candidates survived filtering, log them all so we can
-      // see in the GHA log which subtree the chosen value came from. This
-      // is the breadcrumb we need to harden the selector list further if a
-      // wrong number gets through.
-      console.warn(
-        `[scrape] ${spotifyId} chose ${data.monthlyListenersDebug.chosen} from ${data.monthlyListenersDebug.candidates} candidates ` +
-          `(${data.monthlyListenersDebug.promoFiltered} dropped by promo filter, ` +
-          `${data.monthlyListenersDebug.candidatesAll} total raw):\n  ` +
-          data.monthlyListenersDebug.details
-            .map((d) => `${d.value}  @  ${d.path}`)
-            .join("\n  "),
-      );
+    } else if (data.monthlyListenersDebug) {
+      // Log every artist's pick context, not just multi-candidate ones.
+      // Single-candidate cases are exactly the silent-failure mode we hit
+      // with Tiffany Nacol — the filter was too aggressive and left only
+      // a wrong number, with no log line to tell us where it came from.
+      const dbg = data.monthlyListenersDebug;
+      const lines = [
+        `[scrape] ${spotifyId} chose ${dbg.chosen} from ${dbg.candidates} candidates ` +
+          `(${dbg.promoFiltered} dropped by promo filter, ${dbg.candidatesAll} total raw):`,
+        ...dbg.details.map(
+          (d: { value: string; path: string }) =>
+            `  ✓ ${d.value}  @  ${d.path}`,
+        ),
+        ...dbg.rejectedDetails.map(
+          (d: { value: string; path: string }) =>
+            `  ✗ ${d.value}  @  ${d.path}`,
+        ),
+      ];
+      console.warn(lines.join("\n"));
     }
 
     return {
