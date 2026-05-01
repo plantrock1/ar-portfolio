@@ -376,6 +376,12 @@ async function scrapeArtistPage(
         '[data-testid*="playback"]',
         '[data-testid*="buddy-feed"]',
         '[data-testid*="friend-activity"]',
+        // NPV = "Now Playing View" — the right-panel widget that renders
+        // the currently-playing artist's bio + monthly listeners. Spotify
+        // uses the npv- prefix on every testid in that subtree, so the
+        // prefix match catches the whole panel.
+        '[data-testid^="npv-"]',
+        '[data-testid*="-npv-"]',
         '[aria-label*="Now playing" i]',
         '[aria-label*="now-playing" i]',
         '[aria-label*="player" i]',
@@ -413,10 +419,23 @@ async function scrapeArtistPage(
       );
 
       const safe = deepest.filter((c) => !c.el.closest(PROMO_SELECTOR));
-      const pool = safe.length > 0 ? safe : deepest;
+      // No fallback to `deepest` here. If every candidate lives in a promo
+      // subtree, we'd rather return null (no data captured) than confidently
+      // store the now-playing artist's number on the artist whose page we
+      // visited. This used to be the silent-failure mode for Tiffany /
+      // rehash / Bipolar Sunshine — the wrong number got stored as gospel.
+      const pool = safe;
 
+      // Find the artist's own H1, not the one rendered inside the NPV
+      // panel (which echoes the currently-playing artist's name).
       let monthlyListenersText: string | null = null;
-      const h1 = document.querySelector("h1") as HTMLElement | null;
+      const allH1s = Array.from(
+        document.querySelectorAll("h1"),
+      ) as HTMLElement[];
+      const h1 =
+        allH1s.find((el) => !el.closest(PROMO_SELECTOR)) ??
+        allH1s[0] ??
+        null;
       if (pool.length > 0 && h1) {
         // Pick the candidate whose nearest common ancestor with H1 is the
         // shallowest (= closest in DOM tree distance).
@@ -440,8 +459,14 @@ async function scrapeArtistPage(
         monthlyListenersText = pool[0].value;
       }
 
-      // Last-resort fallback (no candidates at all).
-      if (!monthlyListenersText) {
+      // Last-resort fallback ONLY when there were zero raw candidates at
+      // all — i.e., the page genuinely has no listener-count text we could
+      // find via DOM walking, so a body regex is our only option. If we
+      // had candidates but they all got filtered as promo, we deliberately
+      // keep `monthlyListenersText` null instead of regrabbing the same
+      // bad data from body.innerText (the regex would match the first
+      // occurrence — usually the NPV/player/banner we just rejected).
+      if (!monthlyListenersText && deepest.length === 0) {
         const m = document.body.innerText.match(ML_RE);
         monthlyListenersText = m ? m[1] : null;
       }
