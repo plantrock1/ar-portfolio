@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import {
   getRoster,
   getAggregate,
@@ -15,7 +16,25 @@ import { SocialIcons } from "@/components/social-icons";
 import { formatFullNumber } from "@/lib/utils";
 import type { SectionId } from "@/lib/db/schema";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
+
+// Cache the entire bundle of home-page DB queries for 60s, keyed by sort.
+// Without this, every public visit re-runs all 5 queries on Vercel — a
+// CPU drain that ate 80%+ of our Hobby plan's monthly Fluid CPU budget.
+// 60s staleness is fine: refresh runs are rare and viewers won't notice
+// a one-minute lag in the aggregate stats.
+const getHomePageData = unstable_cache(
+  async (sortBy: RosterSort) =>
+    Promise.all([
+      getRoster(sortBy),
+      getAggregate(),
+      getTopTracksOverall(5),
+      getSiteSettings(),
+      getFeaturedItems("press"),
+    ]),
+  ["home-page-data"],
+  { revalidate: 60, tags: ["public-data"] },
+);
 
 export default async function Home({
   searchParams,
@@ -25,13 +44,8 @@ export default async function Home({
   const { sort } = await searchParams;
   const sortBy: RosterSort = sort === "alpha" ? "alpha" : "listeners";
 
-  const [roster, totals, topTracks, settings, press] = await Promise.all([
-    getRoster(sortBy),
-    getAggregate(),
-    getTopTracksOverall(5),
-    getSiteSettings(),
-    getFeaturedItems("press"),
-  ]);
+  const [roster, totals, topTracks, settings, press] =
+    await getHomePageData(sortBy);
 
   const displayName = settings.displayName?.trim() || "A&R Portfolio";
 

@@ -135,11 +135,28 @@ export function AdminDashboard({
   const [isTriggeringGha, startTriggerGha] = useTransition();
 
   // Always-on polling so runs triggered anywhere (admin, GHA UI, cron) show
-  // progress here. We adapt the cadence based on whether a run is active:
-  // fast while running (smooth progress bar), relaxed when idle.
+  // progress here. Cadence adapts to the situation:
+  //   - 1.5s while a run is active (smooth progress bar)
+  //   - 4s normal idle (catches new runs quickly)
+  //   - 60s deep idle (no run for >5 min) — saves Vercel CPU
+  //   - paused entirely when the tab is hidden
+  // The deep-idle backoff is what saves CPU when an admin leaves the tab
+  // open in the background; previously this poll alone could exhaust the
+  // Hobby plan's 4 CPU-hour monthly limit in <24h with one forgotten tab.
+  const POLL_RUNNING = 1500;
+  const POLL_IDLE = 4000;
+  const POLL_DEEP_IDLE = 60_000;
+  const DEEP_IDLE_AFTER_MS = 5 * 60_000;
+
   function startPolling() {
     stopPolling();
-    let currentInterval = 3000;
+    if (typeof document !== "undefined" && document.hidden) {
+      // Don't start a timer at all if the page loaded while hidden — we'll
+      // start one in the visibilitychange handler.
+      return;
+    }
+    let currentInterval = POLL_IDLE;
+    let lastRunningAt = Date.now();
     const tick = async () => {
       try {
         const res = await fetch("/api/admin/refresh-status", {
@@ -149,15 +166,17 @@ export function AdminDashboard({
         const data = await res.json();
         const r = data.run ?? null;
         setRun((prev) => {
-          // If the run just transitioned from running to a terminal state,
-          // refresh the page so aggregate stats / last-refresh timestamps
-          // update.
           if (prev?.status === "running" && r && r.status !== "running") {
             router.refresh();
           }
           return r;
         });
-        const desired = r?.status === "running" ? 1500 : 4000;
+        if (r?.status === "running") lastRunningAt = Date.now();
+        let desired: number;
+        if (r?.status === "running") desired = POLL_RUNNING;
+        else if (Date.now() - lastRunningAt > DEEP_IDLE_AFTER_MS)
+          desired = POLL_DEEP_IDLE;
+        else desired = POLL_IDLE;
         if (desired !== currentInterval) {
           currentInterval = desired;
           if (pollTimer.current) clearInterval(pollTimer.current);
@@ -167,7 +186,7 @@ export function AdminDashboard({
         // network hiccup; keep polling
       }
     };
-    tick(); // immediate first tick — don't wait for interval
+    tick();
     pollTimer.current = setInterval(tick, currentInterval);
   }
   function stopPolling() {
@@ -177,10 +196,21 @@ export function AdminDashboard({
     }
   }
   useEffect(() => {
-    // Always poll — catches GHA runs triggered from github.com, cron
-    // runs, or other admin tabs.
-    startPolling();
-    return stopPolling;
+    // Pause polling when the tab is hidden (background tab, minimised
+    // window, locked screen). Resume immediately when it comes back.
+    function onVisibilityChange() {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    }
+    if (!document.hidden) startPolling();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopPolling();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

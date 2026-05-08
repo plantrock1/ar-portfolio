@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import {
   getArtistBySlug,
   getArtistHistory,
@@ -15,7 +16,30 @@ import { ArtistSocialsRow } from "@/components/artist-socials";
 import { formatNumber } from "@/lib/utils";
 import type { ArtistSocials } from "@/lib/db/schema";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
+
+// See note in src/app/page.tsx. Cache the per-artist fetch bundle for
+// 60s so repeat views of the same artist don't re-hit the DB on every
+// request. Keyed by artist UUID.
+const getArtistPageData = unstable_cache(
+  async (artistId: string) =>
+    Promise.all([
+      getArtistHistory(artistId),
+      getArtistTopTracks(artistId, 5),
+      getArtistTotalStreams(artistId),
+      getSiteSettings(),
+    ]),
+  ["artist-page-data"],
+  { revalidate: 60, tags: ["public-data"] },
+);
+
+// Slug→artist lookup is small but called on every artist visit; cache it
+// separately since it's keyed by slug, not UUID.
+const getArtistBySlugCached = unstable_cache(
+  (slug: string) => getArtistBySlug(slug),
+  ["artist-by-slug"],
+  { revalidate: 60, tags: ["public-data"] },
+);
 
 function toDayLabel(d: Date) {
   return new Date(d).toLocaleDateString("en-US", {
@@ -38,15 +62,11 @@ export default async function ArtistPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const artist = await getArtistBySlug(slug);
+  const artist = await getArtistBySlugCached(slug);
   if (!artist) notFound();
 
-  const [history, tracks, totalStreams, settings] = await Promise.all([
-    getArtistHistory(artist.id),
-    getArtistTopTracks(artist.id, 5),
-    getArtistTotalStreams(artist.id),
-    getSiteSettings(),
-  ]);
+  const [history, tracks, totalStreams, settings] =
+    await getArtistPageData(artist.id);
   const displayName = settings.displayName;
 
   const latest = history[history.length - 1] ?? null;
