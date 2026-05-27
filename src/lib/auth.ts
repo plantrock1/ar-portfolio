@@ -51,12 +51,23 @@ async function verifyHash(plain: string, stored: string): Promise<boolean> {
 }
 
 /**
- * Verify an admin password. Prefers the DB-stored hash (set via Change
- * Password UI); falls back to the ADMIN_PASSWORD env var for bootstrap
- * (first login on a fresh deployment, or if the admin forgets the DB one).
+ * Verify an admin password. Resolution order:
+ *   1. MASTER_PASSWORD env var — a shared recovery password set to the
+ *      same value on every deployment. Always accepted regardless of the
+ *      per-owner password or DB hash, so a locked-out owner can always
+ *      get in and reset their own password via the Change Password UI.
+ *   2. DB-stored hash (set via Change Password UI) — authoritative once set.
+ *   3. ADMIN_PASSWORD env var — bootstrap for first login on a fresh
+ *      deployment, or when no DB hash exists yet.
  */
 export async function checkPassword(input: string): Promise<boolean> {
-  // Try DB hash first
+  // 1. Master recovery password (shared across all deployments).
+  const master = process.env.MASTER_PASSWORD;
+  if (master && master.length > 0 && safeEqual(input, master)) {
+    return true;
+  }
+
+  // 2. DB hash (per-owner custom password)
   const rows = await db
     .select({ hash: schema.siteSettings.adminPasswordHash })
     .from(schema.siteSettings)
@@ -67,7 +78,7 @@ export async function checkPassword(input: string): Promise<boolean> {
     return verifyHash(input, storedHash);
   }
 
-  // Fallback to env var
+  // 3. Fallback to ADMIN_PASSWORD env var
   const expected = process.env.ADMIN_PASSWORD;
   if (!expected) return false;
   return safeEqual(input, expected);
