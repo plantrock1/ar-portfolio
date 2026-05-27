@@ -42,10 +42,18 @@ In **Settings → Environment Variables**, add these for **Production + Preview 
 | `SPOTIFY_CLIENT_SECRET` | shared | Same value as Alec's |
 | `DATABASE_URL` | per-owner | New Neon pooled URL from step 1 |
 | `ADMIN_PASSWORD` | per-owner | Pick one |
+| `MASTER_PASSWORD` | shared | Same value on every deployment. A recovery password that always works at login, so a locked-out owner can sign in and reset their own password. Use a long random value. |
 | `SESSION_SECRET` | per-owner | `openssl rand -hex 32` — **fresh, don't reuse** |
 | `CRON_SECRET` | per-owner | `openssl rand -hex 32` — **fresh, don't reuse** |
 | `GITHUB_PAT` | shared | Same fine-grained PAT as other deployments (powers the "Refresh via GitHub" buttons in admin) |
 | `GITHUB_AR_SLUG` | per-owner | The lowercase slug, e.g. `moshe` |
+
+> **Lockout recovery**: if an owner forgets a password they set via the
+> Change Password UI, they (or you) can sign in with `MASTER_PASSWORD` and
+> reset it — no SQL needed. If `MASTER_PASSWORD` isn't set on that
+> deployment, the fallback is to clear the stored hash directly:
+> `UPDATE site_settings SET admin_password_hash = NULL WHERE id='main';`
+> which restores the `ADMIN_PASSWORD` env var as the login.
 
 Don't set `USE_LOCAL_CHROME` in production.
 
@@ -108,7 +116,7 @@ Both bypass Vercel's 60s function limit by running on GitHub Actions runners (18
 - [ ] Neon project created, pooled URL captured
 - [ ] Schema pushed via `npm run db:push`
 - [ ] Vercel project imported from shared repo
-- [ ] 8 Vercel env vars set (2 shared Spotify, `DATABASE_URL`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `CRON_SECRET`, `GITHUB_PAT`, `GITHUB_AR_SLUG`)
+- [ ] 9 Vercel env vars set (2 shared Spotify, `DATABASE_URL`, `ADMIN_PASSWORD`, `MASTER_PASSWORD`, `SESSION_SECRET`, `CRON_SECRET`, `GITHUB_PAT`, `GITHUB_AR_SLUG`)
 - [ ] 4 GitHub repo secrets added (`DATABASE_URL_<SLUG>`, `ADMIN_PASSWORD_<SLUG>`, `SESSION_SECRET_<SLUG>`, `CRON_SECRET_<SLUG>`)
 - [ ] 2 workflow files committed (`shallow-refresh-<slug>.yml`, `deep-refresh-<slug>.yml`)
 - [ ] Deployed, subdomain claimed
