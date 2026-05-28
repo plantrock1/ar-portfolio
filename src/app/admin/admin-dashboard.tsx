@@ -1434,6 +1434,15 @@ function ArtistRow({
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [inlineSaving, setInlineSaving] = useState(false);
 
+  // Manual data entry (contingency for when scraping can't run)
+  const [mlInput, setMlInput] = useState("");
+  const [manualTracks, setManualTracks] = useState(
+    Array.from({ length: 5 }, () => ({ name: "", streams: "", spotifyUrl: "" })),
+  );
+  const [savingManual, setSavingManual] = useState(false);
+  const [manualMsg, setManualMsg] = useState<string | null>(null);
+  const [manualErr, setManualErr] = useState<string | null>(null);
+
   async function save() {
     setSaving(true);
     const ok = await onSave({ bio, role, socials, designation });
@@ -1450,6 +1459,60 @@ function ArtistRow({
     setInlineSaving(true);
     await onSave({ designation: next });
     setInlineSaving(false);
+  }
+
+  function updateManualTrack(
+    i: number,
+    field: "name" | "streams" | "spotifyUrl",
+    value: string,
+  ) {
+    setManualTracks((prev) =>
+      prev.map((t, idx) => (idx === i ? { ...t, [field]: value } : t)),
+    );
+  }
+
+  async function saveManual() {
+    setManualErr(null);
+    setManualMsg(null);
+    const mlRaw = mlInput.replace(/[^0-9]/g, "");
+    const ml = mlInput.trim() === "" ? undefined : Number(mlRaw);
+    if (ml !== undefined && (!Number.isFinite(ml) || ml < 0)) {
+      setManualErr("Monthly listeners must be a whole number");
+      return;
+    }
+    const tracks = manualTracks
+      .filter((t) => t.spotifyUrl.trim() && t.name.trim() && t.streams.trim())
+      .map((t) => ({
+        spotifyUrl: t.spotifyUrl.trim(),
+        name: t.name.trim(),
+        streams: Number(t.streams.replace(/[^0-9]/g, "")),
+      }));
+    if (ml === undefined && tracks.length === 0) {
+      setManualErr(
+        "Enter monthly listeners, or a full track row (name + streams + URL)",
+      );
+      return;
+    }
+    setSavingManual(true);
+    const res = await fetch("/api/admin/manual-data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        artistId: artist.id,
+        ...(ml !== undefined ? { monthlyListeners: ml } : {}),
+        ...(tracks.length ? { tracks } : {}),
+      }),
+    });
+    setSavingManual(false);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setManualErr(data.error ?? "Failed to save manual data");
+      return;
+    }
+    if (data.warnings?.length) {
+      setManualErr(data.warnings.join("; "));
+    }
+    setManualMsg("Saved — reload the artist page to see it.");
   }
 
   return (
@@ -1598,6 +1661,91 @@ function ArtistRow({
             >
               {saving ? "Saving…" : "Save"}
             </button>
+          </div>
+
+          {/* Manual data entry — contingency for when a refresh can't run */}
+          <div className="mt-2 border-t border-white/5 pt-4">
+            <div className="flex items-baseline justify-between mb-2 gap-2">
+              <div className="text-[10px] uppercase tracking-widest text-white/40">
+                Manual data entry
+              </div>
+              <span className="text-[10px] text-white/30 text-right">
+                For time crunches / scraper downtime. Saved as the newest data
+                point, so a later refresh supersedes it.
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-3 items-start">
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-white/40">
+                  Monthly listeners
+                </label>
+                <input
+                  value={mlInput}
+                  onChange={(e) => setMlInput(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="e.g., 151875"
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
+                Top tracks (up to 5)
+              </div>
+              <div className="flex flex-col gap-2">
+                {manualTracks.map((t, i) => (
+                  <div
+                    key={i}
+                    className="grid grid-cols-1 sm:grid-cols-[1fr_110px_1.3fr] gap-2"
+                  >
+                    <input
+                      value={t.name}
+                      onChange={(e) =>
+                        updateManualTrack(i, "name", e.target.value)
+                      }
+                      placeholder={`Track ${i + 1} name`}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                    />
+                    <input
+                      value={t.streams}
+                      onChange={(e) =>
+                        updateManualTrack(i, "streams", e.target.value)
+                      }
+                      inputMode="numeric"
+                      placeholder="streams"
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                    />
+                    <input
+                      value={t.spotifyUrl}
+                      onChange={(e) =>
+                        updateManualTrack(i, "spotifyUrl", e.target.value)
+                      }
+                      placeholder="Spotify track URL (for art + link)"
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1 text-[10px] text-white/30">
+                Each track needs all three fields. Album art + ISRC are pulled
+                from the Spotify URL automatically.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 mt-3">
+              {manualErr ? (
+                <span className="text-xs text-red-400">{manualErr}</span>
+              ) : null}
+              {manualMsg ? (
+                <span className="text-xs text-green-400">{manualMsg}</span>
+              ) : null}
+              <button
+                onClick={saveManual}
+                disabled={savingManual}
+                className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
+              >
+                {savingManual ? "Saving…" : "Save manual data"}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

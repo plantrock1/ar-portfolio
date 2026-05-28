@@ -40,3 +40,15 @@ export function parseSpotifyArtistId(input: string): string | null {
   if (uriMatch) return uriMatch[1];
   return null;
 }
+
+export function parseSpotifyTrackId(input: string): string | null {
+  const trimmed = input.trim();
+  if (/^[a-zA-Z0-9]{22}$/.test(trimmed)) return trimmed;
+  const urlMatch = trimmed.match(
+    /open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/([a-zA-Z0-9]{22})/,
+  );
+  if (urlMatch) return urlMatch[1];
+  const uriMatch = trimmed.match(/^spotify:track:([a-zA-Z0-9]{22})$/);
+  if (uriMatch) return uriMatch[1];
+  return null;
+}
