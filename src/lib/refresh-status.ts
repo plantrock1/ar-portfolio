@@ -106,9 +106,20 @@ export async function completeRun(report: RefreshStatus["status"], error?: strin
 }
 
 // If a run is marked "running" but hasn't written any progress in this window,
-// we treat it as dead (Vercel function timeout, browser kill, etc.) and surface
-// it as "failed" so the UI doesn't hang on "running" forever.
-const STALE_RUNNING_MS = 3 * 60 * 1000;
+// we treat it as dead and surface it as "failed" so the UI doesn't hang on
+// "running" forever.
+//
+// The old 3-minute threshold was tuned for Vercel's 60s function timeout —
+// safe back when a refresh was guaranteed to either tick every few seconds or
+// time out. Since we moved to GHA-driven deep refreshes (180-min budget),
+// legitimate quiet phases (e.g., paginating /artists/{id}/albums for a deep
+// catalog while Spotify throttles) can run 5–15 minutes between progress
+// writes, and the watchdog was flipping live runs to "failed" mid-flight.
+//
+// 20 minutes is the new floor — wide enough to absorb any real slow phase,
+// tight enough that a genuinely killed run gets surfaced in the UI within a
+// reasonable window instead of hanging forever.
+const STALE_RUNNING_MS = 20 * 60 * 1000;
 
 export async function getCurrentRun(): Promise<RefreshStatus | null> {
   const rows = await db

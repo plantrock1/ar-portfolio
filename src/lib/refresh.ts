@@ -444,7 +444,16 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
     });
     const artistAlbums: { artist: typeof roster[number]; albumIds: string[] }[] =
       [];
+    let listedSoFar = 0;
     for (const row of roster) {
+      // Heartbeat BEFORE the API call so the watchdog sees activity even if
+      // /artists/{id}/albums gets throttled and takes minutes. Without this,
+      // a long paginated call on the very first artist could exceed the
+      // stale-running window before we write anything else.
+      await updateRun({
+        artistIndex: listedSoFar,
+        message: `Listing albums (${listedSoFar + 1}/${roster.length}) · ${row.name}…`,
+      });
       try {
         const albums = await getAllArtistAlbums(row.spotifyId);
         artistAlbums.push({ artist: row, albumIds: albums.map((a) => a.id) });
@@ -457,6 +466,7 @@ export async function runDeepRefresh(): Promise<RefreshReport> {
         console.error(`[deep] album list failed for ${row.name}:`, e);
         artistAlbums.push({ artist: row, albumIds: [] });
       }
+      listedSoFar += 1;
     }
 
     // Phase 3: scrape each artist's album pages for track IDs + metadata
