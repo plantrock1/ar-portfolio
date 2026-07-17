@@ -138,8 +138,18 @@ export async function getArtistTracks(artistId: string) {
     .sort((a, b) => (b.streams ?? 0) - (a.streams ?? 0));
 }
 
+// Strip trailing " feat. X" / " ft. X" / " (feat. X)" / " [featuring X]" so
+// the same song released once as a solo cut and once as a features version
+// collapses in dedup. Regex matches from the first feature-marker to end of
+// string, so it also nukes anything after the marker (closing paren, etc.).
+const FEAT_STRIP_RE_JS = /\s*[([]?\s*(?:feat|ft|featuring)\.?\s+.*$/i;
+
 function normalizeTitle(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
+  return name
+    .replace(FEAT_STRIP_RE_JS, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 export async function getArtistTopTracks(artistId: string, limit = 5) {
@@ -207,7 +217,7 @@ export async function getArtistTotalStreams(
       -- Stage 2: collapse same-title remasters / re-registrations
       SELECT MAX(streams) AS streams
       FROM per_recording
-      GROUP BY LOWER(TRIM(REGEXP_REPLACE(name, '\\s+', ' ', 'g')))
+      GROUP BY LOWER(TRIM(REGEXP_REPLACE(REGEXP_REPLACE(name, '\\s*[(\\[]?\\s*(feat|ft|featuring)\\.?\\s+.*$', '', 'gi'), '\\s+', ' ', 'g')))
     )
     SELECT SUM(streams)::text AS total FROM per_song
   `);
@@ -267,7 +277,7 @@ export async function getAggregate(): Promise<AggregateTotals> {
       -- under the same roster artist)
       SELECT MAX(streams) AS streams
       FROM per_recording
-      GROUP BY artist_id, LOWER(TRIM(REGEXP_REPLACE(name, '\\s+', ' ', 'g')))
+      GROUP BY artist_id, LOWER(TRIM(REGEXP_REPLACE(REGEXP_REPLACE(name, '\\s*[(\\[]?\\s*(feat|ft|featuring)\\.?\\s+.*$', '', 'gi'), '\\s+', ' ', 'g')))
     )
     SELECT
       (SELECT COUNT(*)::text FROM latest_artist) AS artist_count,
@@ -336,12 +346,12 @@ export async function getTopTracksOverall(limit = 5): Promise<TopTrack[]> {
     ),
     -- Stage 2: dedup same-title remasters / re-registrations per artist
     best_per_song AS (
-      SELECT DISTINCT ON (artist_id, LOWER(TRIM(REGEXP_REPLACE(name, '\\s+', ' ', 'g'))))
+      SELECT DISTINCT ON (artist_id, LOWER(TRIM(REGEXP_REPLACE(REGEXP_REPLACE(name, '\\s*[(\\[]?\\s*(feat|ft|featuring)\\.?\\s+.*$', '', 'gi'), '\\s+', ' ', 'g'))))
         spotify_id, name, album_image_url, artist_id, streams
       FROM best_per_recording
       ORDER BY
         artist_id,
-        LOWER(TRIM(REGEXP_REPLACE(name, '\\s+', ' ', 'g'))),
+        LOWER(TRIM(REGEXP_REPLACE(REGEXP_REPLACE(name, '\\s*[(\\[]?\\s*(feat|ft|featuring)\\.?\\s+.*$', '', 'gi'), '\\s+', ' ', 'g'))),
         streams DESC
     )
     SELECT
