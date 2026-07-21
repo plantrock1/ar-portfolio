@@ -63,8 +63,36 @@ export async function GET(
     fields?: Record<string, unknown>;
   };
 
+  // Resolution passes, in order of precision:
+  //   1. Exact attachment-ID match — most precise, best when nothing has
+  //      changed in Airtable since last sync.
+  //   2. Any attachment in a field whose name matches our cover-keyword
+  //      list — handles the case where someone replaced the cover art
+  //      (new upload = new attachment ID), so our stored ID is stale.
+  //   3. Any attachment on the record (last resort).
+  const COVER_FIELD_KEYS = [
+    "cover art",
+    "album art",
+    "artwork",
+    "cover",
+    "album cover",
+    "release art",
+    "release artwork",
+    "single art",
+  ];
+  const normalizeFieldName = (k: string) =>
+    k
+      .trim()
+      .toLowerCase()
+      .replace(/\s*\([^)]*\)\s*/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const entries = Object.entries(data.fields ?? {});
   let freshUrl: string | null = null;
-  for (const val of Object.values(data.fields ?? {})) {
+
+  // Pass 1: exact ID match
+  for (const [, val] of entries) {
     if (!Array.isArray(val)) continue;
     for (const att of val) {
       if (
@@ -82,9 +110,29 @@ export async function GET(
     if (freshUrl) break;
   }
 
+  // Pass 2: first attachment in a cover-like field
+  if (!freshUrl) {
+    for (const [fieldName, val] of entries) {
+      if (!Array.isArray(val)) continue;
+      if (!COVER_FIELD_KEYS.includes(normalizeFieldName(fieldName))) continue;
+      for (const att of val) {
+        if (
+          att &&
+          typeof att === "object" &&
+          "url" in att &&
+          typeof (att as { url?: unknown }).url === "string"
+        ) {
+          freshUrl = (att as { url: string }).url;
+          break;
+        }
+      }
+      if (freshUrl) break;
+    }
+  }
+
   if (!freshUrl) {
     return NextResponse.json(
-      { error: "attachment not found on Airtable record" },
+      { error: "no cover attachment found on Airtable record" },
       { status: 404 },
     );
   }

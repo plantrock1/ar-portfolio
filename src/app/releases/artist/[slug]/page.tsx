@@ -13,6 +13,7 @@ import {
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { ArtistSocialsRow } from "@/components/artist-socials";
 import { stripLeadingArtist } from "@/lib/utils";
+import { UpcomingCoverImage } from "@/components/upcoming-cover-image";
 import type { ArtistSocials } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -179,12 +180,24 @@ function ReleaseCardTile({
       style={{ aspectRatio: "1 / 1" }}
     >
       {card.coverImageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={card.coverImageUrl}
-          alt={displayTitle}
-          className="absolute inset-0 w-full h-full object-cover"
-        />
+        // Airtable-proxied covers can transiently fail (rotating attachment
+        // IDs, network); UpcomingCoverImage swaps to the placeholder if the
+        // <img> errors. Spotify covers won't hit that path so a plain img
+        // is fine for them.
+        card.isUpcoming ? (
+          <UpcomingCoverImage
+            src={card.coverImageUrl}
+            alt={displayTitle}
+            fallbackInitials={initialsOf(displayTitle)}
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={card.coverImageUrl}
+            alt={displayTitle}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        )
       ) : (
         <UpcomingPlaceholderCover title={displayTitle} />
       )}
@@ -307,20 +320,21 @@ function ReleaseCardTile({
   return <div className="group h-full">{inner}</div>;
 }
 
-function UpcomingPlaceholderCover({ title }: { title: string }) {
-  // Simple, quiet gradient — deliberately not trying to fake album art.
-  // The title is hinted at large-caps in the center, cropped by object-cover.
-  const initials = title
+function initialsOf(title: string): string {
+  return title
     .replace(/[^\p{L}\p{N}\s]/gu, "")
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase() ?? "")
     .join("");
+}
+
+function UpcomingPlaceholderCover({ title }: { title: string }) {
   return (
     <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-neutral-800 via-neutral-900 to-black flex items-center justify-center">
       <span className="display text-5xl text-white/20 tracking-widest">
-        {initials || "◐"}
+        {initialsOf(title) || "◐"}
       </span>
     </div>
   );

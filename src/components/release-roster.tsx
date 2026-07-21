@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { LatestRelease, UpcomingRelease } from "@/lib/queries";
 import { stripLeadingArtist } from "@/lib/utils";
+import { UpcomingCoverImage } from "@/components/upcoming-cover-image";
 
 // Release-mode roster block. Handles:
 //  - Client-side search (case-insensitive substring on artist.name)
@@ -185,11 +186,14 @@ function ReleaseSlot({
         style={{ aspectRatio: "1 / 1" }}
       >
         {coverImageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          // Use UpcomingCoverImage so an Airtable-proxied cover that fails
+          // to resolve swaps to the initials placeholder gracefully. Spotify
+          // covers on Latest rarely fail but the same fallback is harmless.
+          <UpcomingCoverImage
             src={coverImageUrl}
             alt={title}
-            className="absolute inset-0 w-full h-full object-cover"
+            fallbackInitials={fallbackInitials}
+            placeholderFontClassName="display text-2xl text-white/25 tracking-widest"
           />
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-900 to-black flex items-center justify-center">
