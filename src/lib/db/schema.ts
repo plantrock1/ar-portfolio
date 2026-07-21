@@ -234,6 +234,9 @@ export const upcomingReleases = pgTable(
     audioAttachmentId: text("audio_attachment_id"),
     audioFilename: text("audio_filename"),
     audioMimeType: text("audio_mime_type"),
+    // Cover art from Airtable — same rotating-URL problem as audio,
+    // served through /api/upcoming-cover/[id].
+    coverAttachmentId: text("cover_attachment_id"),
     airtableRecordId: text("airtable_record_id").notNull().unique(),
     syncedAt: timestamp("synced_at", { withTimezone: true })
       .notNull()

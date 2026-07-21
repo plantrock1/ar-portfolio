@@ -346,7 +346,9 @@ function upcomingToCard(r: UpcomingRelease): ReleaseCard {
     key: `upcoming-${r.id}`,
     title: r.title,
     releaseDate: r.releaseDate,
-    coverImageUrl: null,
+    // Airtable cover art served through the fresh-URL proxy — see
+    // src/app/api/upcoming-cover/[id]/route.ts.
+    coverImageUrl: r.coverAttachmentId ? `/api/upcoming-cover/${r.id}` : null,
     spotifyUrl: null,
     albumSpotifyId: null,
     preSaveUrl: r.preSaveUrl,

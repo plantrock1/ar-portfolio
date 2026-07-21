@@ -78,6 +78,17 @@ const AUDIO_KEYS = [
   "wav",
   "demo",
 ];
+// Cover art attachment field(s) for the release. Same shape as audio.
+const COVER_KEYS = [
+  "cover art",
+  "album art",
+  "artwork",
+  "cover",
+  "album cover",
+  "release art",
+  "release artwork",
+  "single art",
+];
 
 // Normalize an Airtable column name for fuzzy matching. Strips ALL
 // parenthetical annotations — production label tables commonly use tag
@@ -316,6 +327,21 @@ export async function syncUpcomingReleases(): Promise<{
       }
     }
 
+    // Cover art attachment — same rotating-URL problem as audio.
+    const rawCover = pickField<unknown>(rec.fields, COVER_KEYS);
+    let coverAttachmentId: string | null = null;
+    if (Array.isArray(rawCover) && rawCover.length > 0) {
+      const first = rawCover[0];
+      if (
+        first &&
+        typeof first === "object" &&
+        "id" in first &&
+        typeof (first as { id?: unknown }).id === "string"
+      ) {
+        coverAttachmentId = (first as { id: string }).id;
+      }
+    }
+
     const [existing] = await db
       .select()
       .from(schema.upcomingReleases)
@@ -331,6 +357,7 @@ export async function syncUpcomingReleases(): Promise<{
           audioAttachmentId,
           audioFilename,
           audioMimeType,
+          coverAttachmentId,
           syncedAt: new Date(),
         })
         .where(eq(schema.upcomingReleases.id, existing.id));
@@ -343,6 +370,7 @@ export async function syncUpcomingReleases(): Promise<{
         audioAttachmentId,
         audioFilename,
         audioMimeType,
+        coverAttachmentId,
         airtableRecordId: rec.id,
       });
     }

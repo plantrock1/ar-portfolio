@@ -121,7 +121,11 @@ function ArtistCard({ artist }: { artist: ReleaseRosterArtist }) {
                     : null
                 }
                 date={artist.nextUpcoming?.releaseDate ?? null}
-                coverImageUrl={null}
+                coverImageUrl={
+                  artist.nextUpcoming?.coverAttachmentId
+                    ? `/api/upcoming-cover/${artist.nextUpcoming.id}`
+                    : null
+                }
                 fallbackInitials={initials}
               />
               <ReleaseSlot
