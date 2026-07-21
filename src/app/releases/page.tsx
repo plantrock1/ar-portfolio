@@ -1,7 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { unstable_cache } from "next/cache";
-import { getReleaseRoster, getSiteSettings } from "@/lib/queries";
+import {
+  getReleaseRoster,
+  getSiteSettings,
+  type ReleaseSort,
+} from "@/lib/queries";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { SocialIcons } from "@/components/social-icons";
 
@@ -12,15 +16,28 @@ export const dynamic = "force-dynamic";
 
 // Reuses the same 60s ISR + unstable_cache pattern as the analytics home
 // page (see src/app/page.tsx). Repeat visitors hit the cache instead of
-// re-running the queries every render.
+// re-running the queries every render. Sort is part of the cache key so
+// switching between orderings doesn't collide.
 const getReleaseHomeData = unstable_cache(
-  async () => Promise.all([getReleaseRoster(), getSiteSettings()]),
+  async (sortBy: ReleaseSort) =>
+    Promise.all([getReleaseRoster(sortBy), getSiteSettings()]),
   ["release-home-data"],
   { revalidate: 60, tags: ["public-data"] },
 );
 
-export default async function ReleasesHome() {
-  const [roster, settings] = await getReleaseHomeData();
+function parseSort(v: string | undefined): ReleaseSort {
+  if (v === "alpha" || v === "listeners") return v;
+  return "release";
+}
+
+export default async function ReleasesHome({
+  searchParams,
+}: {
+  searchParams: Promise<{ sort?: string }>;
+}) {
+  const { sort } = await searchParams;
+  const sortBy = parseSort(sort);
+  const [roster, settings] = await getReleaseHomeData(sortBy);
   const displayName = settings.displayName?.trim() || "Releases";
 
   return (
@@ -62,9 +79,12 @@ export default async function ReleasesHome() {
         <div className="divider" />
 
         <section className="pt-14 md:pt-20">
-          <h2 className="display text-2xl sm:text-3xl md:text-4xl text-white mb-8 md:mb-10">
-            Roster
-          </h2>
+          <div className="flex flex-wrap items-baseline justify-between gap-3 mb-8 md:mb-10">
+            <h2 className="display text-2xl sm:text-3xl md:text-4xl text-white">
+              Roster
+            </h2>
+            <SortSwitcher current={sortBy} />
+          </div>
           {roster.length === 0 ? (
             <p className="text-white/50 text-sm">
               No artists yet. Add them from the admin.
@@ -127,4 +147,43 @@ function formatDate(iso: string | null): string {
     month: "short",
   });
   return d ? `${monthName} ${d}, ${y}` : `${monthName} ${y}`;
+}
+
+// Sort switcher for release-mode home page. Three toggle pills — clicking
+// one navigates via query param and Next re-renders with the new sort.
+// Using plain <a> tags means it works server-rendered without any client
+// JS, keeping the release-mode home fully static across the swap.
+function SortSwitcher({ current }: { current: ReleaseSort }) {
+  const options: { key: ReleaseSort; label: string }[] = [
+    { key: "release", label: "Upcoming" },
+    { key: "listeners", label: "Listeners" },
+    { key: "alpha", label: "A–Z" },
+  ];
+  return (
+    <div
+      className="flex items-center gap-0.5 sm:gap-1 text-[10px] uppercase tracking-widest rounded-full border border-white/10 p-0.5 sm:p-1"
+      role="group"
+      aria-label="Sort roster"
+    >
+      {options.map((o) => {
+        const active = o.key === current;
+        // Default ("release") uses no query param so its URL stays clean.
+        const href = o.key === "release" ? "/" : `/?sort=${o.key}`;
+        return (
+          <a
+            key={o.key}
+            href={href}
+            aria-pressed={active}
+            className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-full transition-colors ${
+              active
+                ? "bg-white/10 text-white"
+                : "text-white/40 hover:text-white/70"
+            }`}
+          >
+            {o.label}
+          </a>
+        );
+      })}
+    </div>
+  );
 }

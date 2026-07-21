@@ -504,25 +504,43 @@ export async function getUpcomingReleasesFor(
     .orderBy(asc(schema.upcomingReleases.releaseDate));
 }
 
+export type ReleaseSort = "release" | "alpha" | "listeners";
+
 /**
- * Home-page feed: artists ordered by whichever release date is most
- * relevant — earliest upcoming release first (soonest reveal), then
- * artists with no upcoming, sorted by their latest Spotify release date.
+ * Home-page feed for release-mode deployments. Three sort modes:
+ *
+ *   - "release" (default): artists with an upcoming release first, in
+ *     soonest-date order. Artists without an upcoming release follow,
+ *     sorted by their latest Spotify release date descending.
+ *   - "alpha": pure artist-name A-Z.
+ *   - "listeners": monthly listeners desc (nulls last, alphabetical
+ *     tiebreak). Values come from artist_snapshots, so this only shows
+ *     meaningful order after monthly-listener data has been captured
+ *     (via shallow refresh or manual entry).
  */
-export async function getReleaseRoster() {
+export async function getReleaseRoster(
+  sort: ReleaseSort = "release",
+) {
   const artists = await db
     .select()
     .from(schema.artists)
     .where(eq(schema.artists.hidden, false));
   if (artists.length === 0) return [];
 
-  const [latest, upcoming] = await Promise.all([
+  const [latest, upcoming, listenerRows] = await Promise.all([
     db.select().from(schema.latestReleases),
     db
       .select()
       .from(schema.upcomingReleases)
       .where(isNotNull(schema.upcomingReleases.releaseDate))
       .orderBy(asc(schema.upcomingReleases.releaseDate)),
+    db.execute<{ artist_id: string; monthly_listeners: string | null }>(sql`
+      SELECT DISTINCT ON (artist_id)
+        artist_id,
+        monthly_listeners
+      FROM artist_snapshots
+      ORDER BY artist_id, captured_at DESC
+    `),
   ]);
 
   const latestByArtist = new Map(latest.map((r) => [r.artistId, r]));
@@ -534,15 +552,40 @@ export async function getReleaseRoster() {
     if (!nextUpcomingByArtist.has(u.artistId))
       nextUpcomingByArtist.set(u.artistId, u);
   }
+  const listenersByArtist = new Map<string, number | null>(
+    listenerRows.rows.map((r) => [
+      r.artist_id,
+      r.monthly_listeners ? Number(r.monthly_listeners) : null,
+    ]),
+  );
 
   const decorated = artists.map((a) => ({
     ...a,
     latestRelease: latestByArtist.get(a.id) ?? null,
     nextUpcoming: nextUpcomingByArtist.get(a.id) ?? null,
+    monthlyListeners: listenersByArtist.get(a.id) ?? null,
   }));
 
-  // Sort: artists with an upcoming release first (soonest date), then rest
-  // by most recent Spotify release date desc, then alphabetical.
+  if (sort === "alpha") {
+    return decorated.sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
+  }
+
+  if (sort === "listeners") {
+    return decorated.sort((a, b) => {
+      const al = a.monthlyListeners;
+      const bl = b.monthlyListeners;
+      if (al === null && bl === null) return a.name.localeCompare(b.name);
+      if (al === null) return 1;
+      if (bl === null) return -1;
+      if (bl !== al) return bl - al;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  // "release" (default): upcoming (asc) first, then latest release (desc),
+  // then alphabetical tiebreak.
   return decorated.sort((a, b) => {
     const au = a.nextUpcoming?.releaseDate;
     const bu = b.nextUpcoming?.releaseDate;
