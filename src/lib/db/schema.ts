@@ -228,6 +228,12 @@ export const upcomingReleases = pgTable(
     // upcoming release. Optional: not every Airtable row has one, and
     // upcoming release cards fall back to non-clickable when absent.
     preSaveUrl: text("pre_save_url"),
+    // Audio preview from Airtable — we store the attachment ID (stable)
+    // rather than the URL (rotates every ~2h). The /api/upcoming-audio/[id]
+    // endpoint re-fetches the fresh signed URL on each play.
+    audioAttachmentId: text("audio_attachment_id"),
+    audioFilename: text("audio_filename"),
+    audioMimeType: text("audio_mime_type"),
     airtableRecordId: text("airtable_record_id").notNull().unique(),
     syncedAt: timestamp("synced_at", { withTimezone: true })
       .notNull()

@@ -46,6 +46,9 @@ type ReleaseCard = {
   // Pre-save / smart link (from Airtable) for upcoming releases so the
   // card can link out to whatever landing page is configured.
   preSaveUrl: string | null;
+  // upcoming_releases.id — used to build the audio proxy endpoint URL.
+  // Only set when audioAttachmentId is non-null on the source row.
+  audioSourceId: string | null;
   albumType: string | null;
   isUpcoming: boolean;
 };
@@ -208,6 +211,24 @@ function ReleaseCardTile({
     </div>
   );
 
+  // Audio preview for upcoming releases (pulled from an Airtable attachment
+  // and proxied to keep the signed URL fresh). Only rendered when the
+  // source row has an audio attachment — otherwise the card stays as-is.
+  const audioSlot =
+    card.isUpcoming && card.audioSourceId ? (
+      <div className="px-4 pt-3 -mb-1">
+        <audio
+          controls
+          preload="none"
+          src={`/api/upcoming-audio/${card.audioSourceId}`}
+          className="w-full h-9 rounded"
+          style={{ colorScheme: "dark" }}
+        >
+          Your browser doesn&apos;t support audio playback.
+        </audio>
+      </div>
+    ) : null;
+
   const bodyText = (
     <div className="p-4 flex flex-col gap-1">
       <div className="text-[10px] uppercase tracking-widest text-white/40">
@@ -235,6 +256,31 @@ function ReleaseCardTile({
       <div className="group h-full flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04] transition-colors">
         {mediaSlot}
         {bodyText}
+      </div>
+    );
+  }
+
+  // Upcoming card with audio: don't wrap in an outer <a>, because clicking
+  // the audio controls would otherwise trigger the outer navigation. Show
+  // the pre-save link as a distinct button at the bottom instead.
+  if (card.isUpcoming && card.audioSourceId) {
+    return (
+      <div className="group h-full flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04] transition-colors">
+        {mediaSlot}
+        {audioSlot}
+        {bodyText}
+        {card.preSaveUrl ? (
+          <div className="px-4 pb-4 -mt-1">
+            <a
+              href={card.preSaveUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 px-3 py-1 text-[10px] uppercase tracking-widest text-white/80 hover:text-white hover:bg-white/5"
+            >
+              Pre-save ↗
+            </a>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -289,6 +335,7 @@ function latestToCard(r: LatestRelease): ReleaseCard {
     spotifyUrl: r.spotifyUrl,
     albumSpotifyId: r.albumSpotifyId,
     preSaveUrl: null,
+    audioSourceId: null,
     albumType: r.albumType,
     isUpcoming: false,
   };
@@ -303,6 +350,7 @@ function upcomingToCard(r: UpcomingRelease): ReleaseCard {
     spotifyUrl: null,
     albumSpotifyId: null,
     preSaveUrl: r.preSaveUrl,
+    audioSourceId: r.audioAttachmentId ? r.id : null,
     albumType: null,
     isUpcoming: true,
   };

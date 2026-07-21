@@ -61,6 +61,23 @@ const PRESAVE_URL_KEYS = [
   "smart url",
   "landing page",
 ];
+// Audio attachment field(s) that hold a preview / demo of the release.
+// Airtable returns these as arrays of attachment objects.
+const AUDIO_KEYS = [
+  "song file",
+  "song files",
+  "audio file",
+  "audio",
+  "preview",
+  "preview clip",
+  "preview clips",
+  "master",
+  "final mix",
+  "final master",
+  "mp3",
+  "wav",
+  "demo",
+];
 
 // Normalize an Airtable column name for fuzzy matching. Strips ALL
 // parenthetical annotations — production label tables commonly use tag
@@ -277,6 +294,28 @@ export async function syncUpcomingReleases(): Promise<{
       preSaveUrl = (rawPresave as { url: string }).url;
     }
 
+    // Audio attachment — store just the attachment ID (URL rotates every
+    // ~2h and would break for anyone visiting the site later). The audio
+    // proxy endpoint re-fetches a fresh URL on each play using this ID
+    // plus the record ID above.
+    const rawAudio = pickField<unknown>(rec.fields, AUDIO_KEYS);
+    let audioAttachmentId: string | null = null;
+    let audioFilename: string | null = null;
+    let audioMimeType: string | null = null;
+    if (Array.isArray(rawAudio) && rawAudio.length > 0) {
+      const first = rawAudio[0];
+      if (first && typeof first === "object" && "id" in first) {
+        const att = first as {
+          id?: unknown;
+          filename?: unknown;
+          type?: unknown;
+        };
+        if (typeof att.id === "string") audioAttachmentId = att.id;
+        if (typeof att.filename === "string") audioFilename = att.filename;
+        if (typeof att.type === "string") audioMimeType = att.type;
+      }
+    }
+
     const [existing] = await db
       .select()
       .from(schema.upcomingReleases)
@@ -289,6 +328,9 @@ export async function syncUpcomingReleases(): Promise<{
           title,
           releaseDate,
           preSaveUrl,
+          audioAttachmentId,
+          audioFilename,
+          audioMimeType,
           syncedAt: new Date(),
         })
         .where(eq(schema.upcomingReleases.id, existing.id));
@@ -298,6 +340,9 @@ export async function syncUpcomingReleases(): Promise<{
         title,
         releaseDate,
         preSaveUrl,
+        audioAttachmentId,
+        audioFilename,
+        audioMimeType,
         airtableRecordId: rec.id,
       });
     }
