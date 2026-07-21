@@ -149,10 +149,10 @@ function formatDate(iso: string | null): string {
   return d ? `${monthName} ${d}, ${y}` : `${monthName} ${y}`;
 }
 
-// Sort switcher for release-mode home page. Three toggle pills — clicking
-// one navigates via query param and Next re-renders with the new sort.
-// Using plain <a> tags means it works server-rendered without any client
-// JS, keeping the release-mode home fully static across the swap.
+// Sort switcher for release-mode home page. Three toggle pills using
+// Next's <Link> so navigation is client-side (SPA transition, no full
+// reload, no scroll jump). Data still lives in unstable_cache keyed by
+// sort so both variants stay warm.
 function SortSwitcher({ current }: { current: ReleaseSort }) {
   const options: { key: ReleaseSort; label: string }[] = [
     { key: "release", label: "Upcoming" },
@@ -170,9 +170,10 @@ function SortSwitcher({ current }: { current: ReleaseSort }) {
         // Default ("release") uses no query param so its URL stays clean.
         const href = o.key === "release" ? "/" : `/?sort=${o.key}`;
         return (
-          <a
+          <Link
             key={o.key}
             href={href}
+            scroll={false}
             aria-pressed={active}
             className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-full transition-colors ${
               active
@@ -181,7 +182,7 @@ function SortSwitcher({ current }: { current: ReleaseSort }) {
             }`}
           >
             {o.label}
-          </a>
+          </Link>
         );
       })}
     </div>
