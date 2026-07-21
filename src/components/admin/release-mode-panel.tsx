@@ -166,9 +166,14 @@ export function ReleaseModePanel({
       const res = await fetch("/api/admin/airtable/sync", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "sync failed");
-      setMessage(
-        `Synced. Fetched ${data.fetched}, upserted ${data.upserted}, removed ${data.removed}, skipped ${data.skipped}.`,
-      );
+      let msg = `Synced. Fetched ${data.fetched}, upserted ${data.upserted}, removed ${data.removed}, skipped ${data.skipped}.`;
+      if (data.upserted === 0 && data.sampleFieldNames?.length) {
+        msg +=
+          ` Airtable columns seen: ${data.sampleFieldNames.join(", ")}. Rename or add these to your table to match: Title, Release Date, Artist (or Spotify Artist ID).`;
+      } else if (data.errors?.length && data.upserted < data.fetched) {
+        msg += ` First skip reason: ${data.errors[0].reason}`;
+      }
+      setMessage(msg);
       setStatus((s) =>
         s
           ? {
