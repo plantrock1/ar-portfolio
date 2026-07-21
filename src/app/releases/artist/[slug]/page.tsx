@@ -39,6 +39,12 @@ type ReleaseCard = {
   releaseDate: string | null;
   coverImageUrl: string | null;
   spotifyUrl: string | null;
+  // Spotify album ID — used to render the in-page Spotify embed player
+  // for released items. Absent on upcoming releases.
+  albumSpotifyId: string | null;
+  // Pre-save / smart link (from Airtable) for upcoming releases so the
+  // card can link out to whatever landing page is configured.
+  preSaveUrl: string | null;
   albumType: string | null;
   isUpcoming: boolean;
 };
@@ -154,57 +160,95 @@ function ReleaseCardTile({
   card: ReleaseCard;
   artistName: string;
 }) {
-  const body = (
-    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] transition group-hover:border-white/15 group-hover:bg-white/[0.04]">
-      <div
-        className="relative w-full bg-neutral-900"
-        style={{ aspectRatio: "1 / 1" }}
-      >
-        {card.coverImageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={card.coverImageUrl}
-            alt={card.title}
-            className="absolute inset-0 w-full h-full object-cover transition duration-500 group-hover:scale-[1.02]"
-          />
-        ) : (
-          <UpcomingPlaceholderCover title={card.title} />
-        )}
-        {card.isUpcoming ? (
-          <div className="absolute top-3 left-3 text-[10px] uppercase tracking-widest text-white bg-black/60 backdrop-blur px-2 py-1 rounded-full border border-white/10">
-            Upcoming
-          </div>
-        ) : null}
+  // Released items with a Spotify album ID get an in-page Spotify embed
+  // player — plays previews directly in the card, or full tracks for
+  // viewers logged into Spotify. Upcoming items fall back to the gradient
+  // placeholder (nothing to play yet) and link out to a pre-save page if
+  // one exists.
+  const mediaSlot = card.isUpcoming || !card.albumSpotifyId ? (
+    <div
+      className="relative w-full bg-neutral-900 rounded-t-xl overflow-hidden"
+      style={{ aspectRatio: "1 / 1" }}
+    >
+      {card.coverImageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={card.coverImageUrl}
+          alt={card.title}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : (
+        <UpcomingPlaceholderCover title={card.title} />
+      )}
+      {card.isUpcoming ? (
+        <div className="absolute top-3 left-3 text-[10px] uppercase tracking-widest text-white bg-black/60 backdrop-blur px-2 py-1 rounded-full border border-white/10">
+          Upcoming
+        </div>
+      ) : null}
+    </div>
+  ) : (
+    <div className="relative w-full rounded-t-xl overflow-hidden">
+      <iframe
+        src={`https://open.spotify.com/embed/album/${card.albumSpotifyId}?theme=0`}
+        title={card.title}
+        className="w-full h-[232px] border-0"
+        loading="lazy"
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+      />
+    </div>
+  );
+
+  const bodyText = (
+    <div className="p-4 flex flex-col gap-1">
+      <div className="text-[10px] uppercase tracking-widest text-white/40">
+        {card.isUpcoming
+          ? "Coming soon"
+          : (card.albumType ?? "Release").toString().toUpperCase()}
       </div>
-      <div className="p-4 flex flex-col gap-1">
-        <div className="text-[10px] uppercase tracking-widest text-white/40">
-          {card.isUpcoming
-            ? "Coming soon"
-            : (card.albumType ?? "Release").toString().toUpperCase()}
-        </div>
-        <div className="text-white text-sm leading-snug line-clamp-2">
-          {card.title}
-        </div>
-        <div className="text-xs text-white/50 mt-1">
-          {formatDate(card.releaseDate)}
-          <span className="text-white/30"> · {artistName}</span>
-        </div>
+      <div className="text-white text-sm leading-snug line-clamp-2">
+        {card.title}
+      </div>
+      <div className="text-xs text-white/50 mt-1">
+        {formatDate(card.releaseDate)}
+        <span className="text-white/30"> · {artistName}</span>
       </div>
     </div>
   );
-  if (card.spotifyUrl) {
+
+  // For embedded releases the media slot handles playback — the surrounding
+  // wrapper stays a plain <div> so clicks on the iframe controls aren't
+  // hijacked by an outer <a>. For non-embedded cards (upcoming or those
+  // without a Spotify ID) the outer wrapper is an <a> when we have any
+  // URL to send them to (pre-save > spotifyUrl > nothing).
+  if (card.albumSpotifyId && !card.isUpcoming) {
+    return (
+      <div className="group h-full flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04] transition-colors">
+        {mediaSlot}
+        {bodyText}
+      </div>
+    );
+  }
+
+  const outboundUrl = card.preSaveUrl ?? card.spotifyUrl;
+  const inner = (
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] transition-colors group-hover:border-white/15 group-hover:bg-white/[0.04]">
+      {mediaSlot}
+      {bodyText}
+    </div>
+  );
+  if (outboundUrl) {
     return (
       <a
-        href={card.spotifyUrl}
+        href={outboundUrl}
         target="_blank"
         rel="noreferrer"
         className="group block h-full"
       >
-        {body}
+        {inner}
       </a>
     );
   }
-  return <div className="group h-full">{body}</div>;
+  return <div className="group h-full">{inner}</div>;
 }
 
 function UpcomingPlaceholderCover({ title }: { title: string }) {
@@ -233,6 +277,8 @@ function latestToCard(r: LatestRelease): ReleaseCard {
     releaseDate: r.releaseDate,
     coverImageUrl: r.coverImageUrl,
     spotifyUrl: r.spotifyUrl,
+    albumSpotifyId: r.albumSpotifyId,
+    preSaveUrl: null,
     albumType: r.albumType,
     isUpcoming: false,
   };
@@ -245,6 +291,8 @@ function upcomingToCard(r: UpcomingRelease): ReleaseCard {
     releaseDate: r.releaseDate,
     coverImageUrl: null,
     spotifyUrl: null,
+    albumSpotifyId: null,
+    preSaveUrl: r.preSaveUrl,
     albumType: null,
     isUpcoming: true,
   };

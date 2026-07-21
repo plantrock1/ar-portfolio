@@ -224,6 +224,10 @@ export const upcomingReleases = pgTable(
       .references(() => artists.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     releaseDate: text("release_date"), // YYYY-MM-DD from Airtable, nullable if TBD
+    // Pre-save / smart link so viewers can click through to save the
+    // upcoming release. Optional: not every Airtable row has one, and
+    // upcoming release cards fall back to non-clickable when absent.
+    preSaveUrl: text("pre_save_url"),
     airtableRecordId: text("airtable_record_id").notNull().unique(),
     syncedAt: timestamp("synced_at", { withTimezone: true })
       .notNull()

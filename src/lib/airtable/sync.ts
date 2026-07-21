@@ -48,6 +48,19 @@ const ARTIST_NAME_KEYS = [
   "artist",
   "artists",
 ];
+// Pre-save / smart link for the upcoming release. Optional per row.
+const PRESAVE_URL_KEYS = [
+  "pre-save link",
+  "pre save link",
+  "presave link",
+  "pre-save url",
+  "presave url",
+  "pre-save",
+  "presave",
+  "smart link",
+  "smart url",
+  "landing page",
+];
 
 // Normalize an Airtable column name for fuzzy matching. Strips ALL
 // parenthetical annotations — production label tables commonly use tag
@@ -249,6 +262,21 @@ export async function syncUpcomingReleases(): Promise<{
       continue;
     }
 
+    // Pre-save/smart link: accept a plain URL or Airtable Button field
+    // (object with { url, label }). Normalize to string | null.
+    const rawPresave = pickField<unknown>(rec.fields, PRESAVE_URL_KEYS);
+    let preSaveUrl: string | null = null;
+    if (typeof rawPresave === "string" && rawPresave.trim().length > 0) {
+      preSaveUrl = rawPresave.trim();
+    } else if (
+      rawPresave &&
+      typeof rawPresave === "object" &&
+      "url" in rawPresave &&
+      typeof (rawPresave as { url?: unknown }).url === "string"
+    ) {
+      preSaveUrl = (rawPresave as { url: string }).url;
+    }
+
     const [existing] = await db
       .select()
       .from(schema.upcomingReleases)
@@ -260,6 +288,7 @@ export async function syncUpcomingReleases(): Promise<{
           artistId: artist.id,
           title,
           releaseDate,
+          preSaveUrl,
           syncedAt: new Date(),
         })
         .where(eq(schema.upcomingReleases.id, existing.id));
@@ -268,6 +297,7 @@ export async function syncUpcomingReleases(): Promise<{
         artistId: artist.id,
         title,
         releaseDate,
+        preSaveUrl,
         airtableRecordId: rec.id,
       });
     }
