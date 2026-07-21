@@ -72,8 +72,20 @@ export function ReleaseRoster({
 
 function ArtistCard({ artist }: { artist: ReleaseRosterArtist }) {
   const initials = artistInitials(artist.name);
+  // Popover images (which hit /api/upcoming-cover, one round-trip to
+  // Airtable per unique cover) only load AFTER the first hover. Without
+  // this gate, every card on the roster fires its Airtable requests on
+  // page load — a 50-artist page = ~100 concurrent requests, well over
+  // Airtable's 5 req/sec rate limit, so many silently fail. Once loaded
+  // we keep them loaded (never flip `armed` back to false) so subsequent
+  // hovers are instant.
+  const [armed, setArmed] = useState(false);
   return (
-    <li className="group relative">
+    <li
+      className="group relative"
+      onMouseEnter={() => setArmed(true)}
+      onFocus={() => setArmed(true)}
+    >
       <Link
         href={`/artist/${artist.slug}`}
         className="relative flex items-center gap-4 p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04] transition-colors"
@@ -123,7 +135,7 @@ function ArtistCard({ artist }: { artist: ReleaseRosterArtist }) {
                 }
                 date={artist.nextUpcoming?.releaseDate ?? null}
                 coverImageUrl={
-                  artist.nextUpcoming?.coverAttachmentId
+                  armed && artist.nextUpcoming?.coverAttachmentId
                     ? `/api/upcoming-cover/${artist.nextUpcoming.id}`
                     : null
                 }
@@ -137,7 +149,11 @@ function ArtistCard({ artist }: { artist: ReleaseRosterArtist }) {
                     : null
                 }
                 date={artist.latestRelease?.releaseDate ?? null}
-                coverImageUrl={artist.latestRelease?.coverImageUrl ?? null}
+                coverImageUrl={
+                  armed
+                    ? (artist.latestRelease?.coverImageUrl ?? null)
+                    : null
+                }
                 fallbackInitials={initials}
               />
             </div>

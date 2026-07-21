@@ -137,5 +137,10 @@ export async function GET(
     );
   }
 
-  return NextResponse.redirect(freshUrl, 302);
+  // Cache the redirect for 1 hour on the browser/CDN. Airtable signed
+  // URLs live ~2h so this is safely under that; a viewer hovering the
+  // same artist card multiple times only pays the round-trip once.
+  const res = NextResponse.redirect(freshUrl, 302);
+  res.headers.set("Cache-Control", "public, max-age=3600");
+  return res;
 }
