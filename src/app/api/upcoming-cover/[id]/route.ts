@@ -49,17 +49,17 @@ export async function GET(
     auth.baseId,
   )}/${encodeURIComponent(auth.tableName)}/${encodeURIComponent(row.airtableRecordId)}`;
 
-  const res = await fetch(url, {
+  const airtableRes = await fetch(url, {
     headers: { Authorization: `Bearer ${auth.accessToken}` },
     cache: "no-store",
   });
-  if (!res.ok) {
+  if (!airtableRes.ok) {
     return NextResponse.json(
-      { error: `Airtable ${res.status}` },
+      { error: `Airtable ${airtableRes.status}` },
       { status: 502 },
     );
   }
-  const data = (await res.json()) as {
+  const data = (await airtableRes.json()) as {
     fields?: Record<string, unknown>;
   };
 
