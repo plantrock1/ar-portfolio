@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type { Artist, ArtistSocials, SectionId } from "@/lib/db/schema";
 import { ImageCropModal } from "@/components/admin/image-crop-modal";
+import {
+  ReleaseModePanel,
+  type AirtableStatus,
+} from "@/components/admin/release-mode-panel";
 import { renderInlineItalics } from "@/lib/inline-markdown";
 
 const SECTION_LABELS: Record<SectionId, string> = {
@@ -55,6 +59,8 @@ export function AdminDashboard({
   initialPress,
   lastRefreshedAt,
   session,
+  siteMode = "analytics",
+  initialAirtableStatus = null,
 }: {
   initialArtists: Artist[];
   initialDisplayName: string;
@@ -75,6 +81,8 @@ export function AdminDashboard({
     updatedAt: string | null;
     preview: string | null;
   };
+  siteMode?: "analytics" | "releases";
+  initialAirtableStatus?: AirtableStatus | null;
 }) {
   const router = useRouter();
   const [artists, setArtists] = useState(initialArtists);
@@ -653,6 +661,10 @@ export function AdminDashboard({
           Sign out
         </button>
       </div>
+
+      {siteMode === "releases" ? (
+        <ReleaseModePanel initialStatus={initialAirtableStatus} />
+      ) : null}
 
       <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
         <div className="flex items-baseline justify-between mb-4">

@@ -2,25 +2,29 @@ import { NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { getLatestRelease } from "@/lib/spotify/api";
 import { desc, eq } from "drizzle-orm";
+import { isAdmin } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // Refreshes the cached "most recent release" per artist by hitting the
-// Spotify Web API. Called by a Vercel Cron (daily) on release-mode
-// deployments; also usable manually via GET with CRON_SECRET.
+// Spotify Web API. Dual-auth:
+//   1. Vercel Cron / server-to-server -> Bearer CRON_SECRET
+//   2. Admin button from the browser -> admin session cookie (isAdmin)
 //
-// This is deliberately much lighter than the analytics-side refresh — no
-// puppeteer, no scraping, just API calls. Whole roster of ~20 artists
-// finishes in a few seconds well inside the Vercel 60s function limit.
-export async function GET(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
+// Deliberately much lighter than the analytics-side refresh — no puppeteer,
+// no scraping, just API calls. A ~20-artist roster finishes in a few seconds
+// well inside the Vercel 60s function limit.
+async function isAuthorized(req: Request): Promise<boolean> {
+  const cronHeader = req.headers.get("authorization") ?? "";
   const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json({ error: "CRON_SECRET not set" }, { status: 500 });
-  }
-  if (auth !== `Bearer ${secret}`) {
+  if (secret && cronHeader === `Bearer ${secret}`) return true;
+  return isAdmin();
+}
+
+async function handle(req: Request) {
+  if (!(await isAuthorized(req))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -87,3 +91,9 @@ export async function GET(req: Request) {
     errors,
   });
 }
+
+// GET works for both Vercel Cron pings and one-off curl testing with the
+// Bearer secret. POST is what the admin button uses so it can't be
+// triggered by simple link-preview crawls of the URL.
+export const GET = handle;
+export const POST = handle;
