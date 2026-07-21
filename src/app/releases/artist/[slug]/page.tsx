@@ -12,6 +12,7 @@ import {
 } from "@/lib/queries";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { ArtistSocialsRow } from "@/components/artist-socials";
+import { stripLeadingArtist } from "@/lib/utils";
 import type { ArtistSocials } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -160,6 +161,10 @@ function ReleaseCardTile({
   card: ReleaseCard;
   artistName: string;
 }) {
+  // Airtable often stores upcoming titles as "Artist Name - Track Title"
+  // for internal PM readability; strip that prefix since the site already
+  // shows the artist name in context.
+  const displayTitle = stripLeadingArtist(card.title, artistName);
   // Released items with a Spotify album ID get an in-page Spotify embed
   // player — plays previews directly in the card, or full tracks for
   // viewers logged into Spotify. Upcoming items fall back to the gradient
@@ -174,15 +179,20 @@ function ReleaseCardTile({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={card.coverImageUrl}
-          alt={card.title}
+          alt={displayTitle}
           className="absolute inset-0 w-full h-full object-cover"
         />
       ) : (
-        <UpcomingPlaceholderCover title={card.title} />
+        <UpcomingPlaceholderCover title={displayTitle} />
       )}
       {card.isUpcoming ? (
         <div className="absolute top-3 left-3 text-[10px] uppercase tracking-widest text-white bg-black/60 backdrop-blur px-2 py-1 rounded-full border border-white/10">
           Upcoming
+        </div>
+      ) : null}
+      {card.isUpcoming && card.preSaveUrl ? (
+        <div className="absolute bottom-3 right-3 text-[10px] uppercase tracking-widest text-white bg-white/10 backdrop-blur px-2.5 py-1 rounded-full border border-white/20">
+          Pre-save ↗
         </div>
       ) : null}
     </div>
@@ -190,7 +200,7 @@ function ReleaseCardTile({
     <div className="relative w-full rounded-t-xl overflow-hidden">
       <iframe
         src={`https://open.spotify.com/embed/album/${card.albumSpotifyId}?theme=0`}
-        title={card.title}
+        title={displayTitle}
         className="w-full h-[232px] border-0"
         loading="lazy"
         allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
@@ -206,7 +216,7 @@ function ReleaseCardTile({
           : (card.albumType ?? "Release").toString().toUpperCase()}
       </div>
       <div className="text-white text-sm leading-snug line-clamp-2">
-        {card.title}
+        {displayTitle}
       </div>
       <div className="text-xs text-white/50 mt-1">
         {formatDate(card.releaseDate)}

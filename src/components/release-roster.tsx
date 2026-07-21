@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { LatestRelease, UpcomingRelease } from "@/lib/queries";
+import { stripLeadingArtist } from "@/lib/utils";
 
 // Release-mode roster block. Handles:
 //  - Client-side search (case-insensitive substring on artist.name)
@@ -114,14 +115,22 @@ function ArtistCard({ artist }: { artist: ReleaseRosterArtist }) {
             <div className="grid grid-cols-2 gap-3">
               <ReleaseSlot
                 label="Upcoming"
-                title={artist.nextUpcoming?.title ?? null}
+                title={
+                  artist.nextUpcoming
+                    ? stripLeadingArtist(artist.nextUpcoming.title, artist.name)
+                    : null
+                }
                 date={artist.nextUpcoming?.releaseDate ?? null}
                 coverImageUrl={null}
                 fallbackInitials={initials}
               />
               <ReleaseSlot
                 label="Latest"
-                title={artist.latestRelease?.title ?? null}
+                title={
+                  artist.latestRelease
+                    ? stripLeadingArtist(artist.latestRelease.title, artist.name)
+                    : null
+                }
                 date={artist.latestRelease?.releaseDate ?? null}
                 coverImageUrl={artist.latestRelease?.coverImageUrl ?? null}
                 fallbackInitials={initials}

@@ -5,6 +5,32 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * When Airtable stores release titles as "Artist Name - Track Title" (or
+ * variations), strip the leading artist name + separator so the release
+ * card doesn't duplicate what the site already shows next to it. Case-
+ * insensitive; recognizes common separators (hyphen, en-dash, em-dash,
+ * colon, pipe). Returns the original title if no prefix matches.
+ */
+export function stripLeadingArtist(
+  title: string,
+  artistName: string,
+): string {
+  const trimmed = title.trim();
+  const artist = artistName.trim();
+  if (!artist) return trimmed;
+  const separators = [" - ", " – ", " — ", ": ", " | "];
+  const lowerTitle = trimmed.toLowerCase();
+  const lowerArtist = artist.toLowerCase();
+  for (const sep of separators) {
+    const prefix = lowerArtist + sep;
+    if (lowerTitle.startsWith(prefix)) {
+      return trimmed.slice(prefix.length).trim();
+    }
+  }
+  return trimmed;
+}
+
 export function formatNumber(n: number | null | undefined): string {
   if (n === null || n === undefined) return "—";
   if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + "B";
