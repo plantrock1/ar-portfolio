@@ -7,38 +7,61 @@ import { getValidAirtableAuth } from "./tokens";
 // insulates us from small casing/whitespace differences in the base
 // without needing a full mapping UI.
 const TITLE_KEYS = [
-  "title",
   "release title",
+  "release name",
+  "title",
   "name",
   "track",
   "song title",
   "song",
   "release",
 ];
+// Note: "date" alone is deliberately NOT in DATE_KEYS — production label
+// tables like Lexi's include many date columns (Editorial Monitoring Stop
+// Date, Created Time, etc.) and matching bare "date" grabs the wrong one.
 const DATE_KEYS = [
   "release date",
-  "date",
   "releasedate",
   "drop date",
   "street date",
   "planned date",
+  "preorder date",
 ];
 const SPOTIFY_ID_KEYS = [
   "spotify artist id",
   "spotify id",
   "artist spotify id",
   "spotifyartistid",
+  "spotify uri",
+  "artist spotify uri",
+  "artist + spotify uri",
 ];
+// "primary artist name" is preferred over bare "primary artist" so, in a
+// schema that has both a Select (bare) and a Name lookup, we pick the
+// resolvable name. Order matters — first match in this list wins.
 const ARTIST_NAME_KEYS = [
-  "artist",
-  "artist name",
+  "primary artist name",
+  "primary artist names",
   "primary artist",
+  "artist name",
+  "artist names",
+  "artist",
   "artists",
-  "artist(s)",
 ];
 
+// Normalize an Airtable column name for fuzzy matching. Strips ALL
+// parenthetical annotations — production label tables commonly use tag
+// prefixes like "(Release) Release Date", "(PM) Primary Artist (Select)",
+// and "(OLD) Legacy Field" to group fields by category. Users don't want
+// to think about those tags when the sync tries to find "release date" or
+// "primary artist" — so we drop them before matching.
 function normalizeKey(k: string): string {
-  return k.trim().toLowerCase();
+  return k
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // Normalize an artist name for fuzzy roster matching. Strips punctuation
