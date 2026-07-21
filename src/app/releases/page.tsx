@@ -110,12 +110,42 @@ export default async function ReleasesHome({
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="text-white truncate">{a.name}</div>
-                      <div className="text-xs text-white/50 truncate mt-0.5">
+                      {/* Compact meta — collapses on hover to make room for
+                          the expanded release detail below. */}
+                      <div className="text-xs text-white/50 truncate mt-0.5 group-hover:hidden">
                         {a.nextUpcoming
                           ? `Upcoming · ${formatDate(a.nextUpcoming.releaseDate)}`
                           : a.latestRelease
                             ? `Latest · ${formatDate(a.latestRelease.releaseDate)}`
                             : "No releases yet"}
+                      </div>
+                      {/* Expanded meta — one or two lines, always shows
+                          both when available so the hover reveals real
+                          new info. On touch devices this stays hidden. */}
+                      <div className="hidden group-hover:flex flex-col gap-0.5 mt-0.5 text-xs">
+                        {a.nextUpcoming ? (
+                          <div className="text-white/70 truncate">
+                            <span className="text-white/40">Upcoming ·</span>{" "}
+                            {formatDate(a.nextUpcoming.releaseDate)}
+                            <span className="text-white/40"> · </span>
+                            <span className="text-white/80">
+                              {a.nextUpcoming.title}
+                            </span>
+                          </div>
+                        ) : null}
+                        {a.latestRelease ? (
+                          <div className="text-white/70 truncate">
+                            <span className="text-white/40">Latest ·</span>{" "}
+                            {formatDate(a.latestRelease.releaseDate)}
+                            <span className="text-white/40"> · </span>
+                            <span className="text-white/80">
+                              {a.latestRelease.title}
+                            </span>
+                          </div>
+                        ) : null}
+                        {!a.nextUpcoming && !a.latestRelease ? (
+                          <div className="text-white/40">No releases yet</div>
+                        ) : null}
                       </div>
                     </div>
                     <span className="text-white/30 text-xs shrink-0">→</span>
