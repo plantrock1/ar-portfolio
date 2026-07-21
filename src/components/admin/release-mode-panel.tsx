@@ -167,9 +167,14 @@ export function ReleaseModePanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "sync failed");
       let msg = `Synced. Fetched ${data.fetched}, upserted ${data.upserted}, removed ${data.removed}, skipped ${data.skipped}.`;
-      if (data.upserted === 0 && data.sampleFieldNames?.length) {
+      if (data.diagnostic) {
+        const d = data.diagnostic;
+        const skipReasonStr = Object.entries(d.skipReasonCounts)
+          .map(([r, n]) => `${n}× ${r}`)
+          .join("; ");
         msg +=
-          ` Airtable columns seen: ${data.sampleFieldNames.join(", ")}. Rename or add these to your table to match: Title, Release Date, Artist (or Spotify Artist ID).`;
+          `\n\nSkipped past-date rows: ${d.skippedPastDates}. Row-error skips: ${skipReasonStr || "(none)"}.` +
+          `\n\nAll Airtable columns seen (${d.allFieldNames.length}): ${d.allFieldNames.join(", ")}`;
       } else if (data.errors?.length && data.upserted < data.fetched) {
         msg += ` First skip reason: ${data.errors[0].reason}`;
       }
@@ -396,10 +401,14 @@ export function ReleaseModePanel({
         )}
 
         {message ? (
-          <div className="mt-3 text-xs text-green-400">{message}</div>
+          <div className="mt-3 text-xs text-green-400 whitespace-pre-wrap break-words">
+            {message}
+          </div>
         ) : null}
         {error ? (
-          <div className="mt-3 text-xs text-red-400">{error}</div>
+          <div className="mt-3 text-xs text-red-400 whitespace-pre-wrap break-words">
+            {error}
+          </div>
         ) : null}
       </div>
     </section>

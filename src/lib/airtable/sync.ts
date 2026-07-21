@@ -273,13 +273,35 @@ export async function syncUpcomingReleases(): Promise<{
     })
     .where(eq(schema.siteSettings.id, "main"));
 
-  // If literally nothing matched, dump the first record's field keys so the
-  // admin can see which column names Airtable actually returned. This is
-  // the fastest way to spot a header mismatch without adding a mapping UI.
-  const sampleFieldNames =
-    upserted === 0 && records.length > 0
-      ? Object.keys(records[0].fields).slice(0, 20)
-      : undefined;
+  // When nothing matched, surface the union of every field key seen across
+  // the first several records + a breakdown of skip reasons. Union rather
+  // than first-record slice because Airtable omits empty fields per record,
+  // so any one row may not show every column.
+  let diagnostic:
+    | {
+        allFieldNames: string[];
+        skippedPastDates: number;
+        skipReasonCounts: Record<string, number>;
+      }
+    | undefined;
+  if (upserted === 0 && records.length > 0) {
+    const keys = new Set<string>();
+    for (const r of records.slice(0, 25)) {
+      for (const k of Object.keys(r.fields)) keys.add(k);
+    }
+    const reasonCounts: Record<string, number> = {};
+    for (const e of errors) {
+      reasonCounts[e.reason] = (reasonCounts[e.reason] ?? 0) + 1;
+    }
+    const errorTotal = errors.length;
+    diagnostic = {
+      allFieldNames: [...keys].sort(),
+      // Past-date skips don't create error rows (they're silent), so we
+      // derive the count as: (total skipped) − (row-level error rows).
+      skippedPastDates: Math.max(0, skipped - errorTotal),
+      skipReasonCounts: reasonCounts,
+    };
+  }
 
   return {
     fetched: records.length,
@@ -287,7 +309,7 @@ export async function syncUpcomingReleases(): Promise<{
     removed: deleted.length,
     skipped,
     errors,
-    ...(sampleFieldNames ? { sampleFieldNames } : {}),
+    ...(diagnostic ? { diagnostic } : {}),
   };
 }
 
