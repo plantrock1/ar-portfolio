@@ -1,5 +1,5 @@
 import { db, schema } from "@/lib/db";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 
 export type ArtistWithLatest = typeof schema.artists.$inferSelect & {
   latest: {
@@ -473,3 +473,88 @@ export async function getAggregateHistory() {
       : null,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Release-mode queries — used by SITE_MODE=releases deployments (Lexi's site).
+// Return empty on non-release deployments because the tables just have no rows.
+// ---------------------------------------------------------------------------
+
+export type LatestRelease = typeof schema.latestReleases.$inferSelect;
+export type UpcomingRelease = typeof schema.upcomingReleases.$inferSelect;
+
+/** Cached most-recent release per artist. */
+export async function getLatestReleaseFor(
+  artistId: string,
+): Promise<LatestRelease | null> {
+  const rows = await db
+    .select()
+    .from(schema.latestReleases)
+    .where(eq(schema.latestReleases.artistId, artistId));
+  return rows[0] ?? null;
+}
+
+/** All upcoming releases for an artist, soonest first. */
+export async function getUpcomingReleasesFor(
+  artistId: string,
+): Promise<UpcomingRelease[]> {
+  return db
+    .select()
+    .from(schema.upcomingReleases)
+    .where(eq(schema.upcomingReleases.artistId, artistId))
+    .orderBy(asc(schema.upcomingReleases.releaseDate));
+}
+
+/**
+ * Home-page feed: artists ordered by whichever release date is most
+ * relevant — earliest upcoming release first (soonest reveal), then
+ * artists with no upcoming, sorted by their latest Spotify release date.
+ */
+export async function getReleaseRoster() {
+  const artists = await db
+    .select()
+    .from(schema.artists)
+    .where(eq(schema.artists.hidden, false));
+  if (artists.length === 0) return [];
+
+  const [latest, upcoming] = await Promise.all([
+    db.select().from(schema.latestReleases),
+    db
+      .select()
+      .from(schema.upcomingReleases)
+      .where(isNotNull(schema.upcomingReleases.releaseDate))
+      .orderBy(asc(schema.upcomingReleases.releaseDate)),
+  ]);
+
+  const latestByArtist = new Map(latest.map((r) => [r.artistId, r]));
+  const nextUpcomingByArtist = new Map<
+    string,
+    (typeof upcoming)[number]
+  >();
+  for (const u of upcoming) {
+    if (!nextUpcomingByArtist.has(u.artistId))
+      nextUpcomingByArtist.set(u.artistId, u);
+  }
+
+  const decorated = artists.map((a) => ({
+    ...a,
+    latestRelease: latestByArtist.get(a.id) ?? null,
+    nextUpcoming: nextUpcomingByArtist.get(a.id) ?? null,
+  }));
+
+  // Sort: artists with an upcoming release first (soonest date), then rest
+  // by most recent Spotify release date desc, then alphabetical.
+  return decorated.sort((a, b) => {
+    const au = a.nextUpcoming?.releaseDate;
+    const bu = b.nextUpcoming?.releaseDate;
+    if (au && bu) return au.localeCompare(bu);
+    if (au) return -1;
+    if (bu) return 1;
+    const al = a.latestRelease?.releaseDate;
+    const bl = b.latestRelease?.releaseDate;
+    if (al && bl) return bl.localeCompare(al);
+    if (al) return -1;
+    if (bl) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+

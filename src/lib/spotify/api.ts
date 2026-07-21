@@ -170,6 +170,36 @@ export async function getTrack(id: string): Promise<SpotifyTrack> {
   return spotify<SpotifyTrack>(`/tracks/${id}`);
 }
 
+/**
+ * Most-recent release for an artist — album, single, or compilation. Used
+ * by release-mode deployments (SITE_MODE=releases) to populate the "latest
+ * release" card on the artist page. Returns null if the artist has no
+ * public releases.
+ *
+ * Spotify sorts /artists/{id}/albums newest-first by default, so pulling
+ * just the first page (default limit=5 for our stripped app) gives us the
+ * candidate set. We pick the item with the max release_date across album
+ * types to be robust against groupings.
+ */
+export async function getLatestRelease(
+  spotifyId: string,
+): Promise<SpotifyArtistAlbum | null> {
+  const r = await spotify<{ items: SpotifyArtistAlbum[] }>(
+    `/artists/${spotifyId}/albums?include_groups=album,single,compilation&limit=10`,
+  ).catch(async () =>
+    // Some app tiers 400 on limit — retry with default.
+    spotify<{ items: SpotifyArtistAlbum[] }>(
+      `/artists/${spotifyId}/albums?include_groups=album,single,compilation`,
+    ),
+  );
+  if (!r.items || r.items.length === 0) return null;
+  let best: SpotifyArtistAlbum | null = null;
+  for (const item of r.items) {
+    if (!best || item.release_date > best.release_date) best = item;
+  }
+  return best;
+}
+
 export type TrackIsrc = { id: string; isrc: string | null };
 
 /**

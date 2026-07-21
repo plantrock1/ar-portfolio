@@ -169,10 +169,71 @@ export const siteSettings = pgTable("site_settings", {
   spotifySessionUpdatedAt: timestamp("spotify_session_updated_at", {
     withTimezone: true,
   }),
+  // Airtable OAuth for release-mode deployments (SITE_MODE=releases).
+  // Stored in plain text — this DB is not public, and the tokens are useless
+  // without the CLIENT_ID/SECRET env vars anyway. If we later need to share
+  // the DB more broadly, wrap these with symmetric encryption keyed by
+  // SESSION_SECRET. Null on non-release deployments.
+  airtableAccessToken: text("airtable_access_token"),
+  airtableRefreshToken: text("airtable_refresh_token"),
+  airtableTokenExpiresAt: timestamp("airtable_token_expires_at", {
+    withTimezone: true,
+  }),
+  airtableBaseId: text("airtable_base_id"),
+  airtableTableName: text("airtable_table_name"),
+  airtableSyncStatus: text("airtable_sync_status").notNull().default("idle"),
+  airtableLastSyncedAt: timestamp("airtable_last_synced_at", {
+    withTimezone: true,
+  }),
+  airtableLastError: text("airtable_last_error"),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });
+
+// -- Release-mode tables ------------------------------------------------
+// Populated on release-mode deployments (SITE_MODE=releases). On the
+// existing 5 A&R/manager sites these tables just sit empty.
+
+// Cached "most recent release" per artist, refreshed periodically from the
+// Spotify Web API so the artist page doesn't hit Spotify on every render.
+export const latestReleases = pgTable("latest_releases", {
+  artistId: uuid("artist_id")
+    .primaryKey()
+    .references(() => artists.id, { onDelete: "cascade" }),
+  albumSpotifyId: text("album_spotify_id").notNull(),
+  title: text("title").notNull(),
+  releaseDate: text("release_date").notNull(), // YYYY-MM-DD from Spotify
+  albumType: text("album_type"), // 'album' | 'single' | 'compilation'
+  coverImageUrl: text("cover_image_url"),
+  spotifyUrl: text("spotify_url"),
+  syncedAt: timestamp("synced_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// Upcoming (unreleased) releases mirrored from Lexi's shared Airtable base.
+// airtableRecordId is the sync anchor — a row that disappears from Airtable
+// gets cleaned up on the next sync via a delete-not-in-set.
+export const upcomingReleases = pgTable(
+  "upcoming_releases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    artistId: uuid("artist_id")
+      .notNull()
+      .references(() => artists.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    releaseDate: text("release_date"), // YYYY-MM-DD from Airtable, nullable if TBD
+    airtableRecordId: text("airtable_record_id").notNull().unique(),
+    syncedAt: timestamp("synced_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("upcoming_releases_artist_id_idx").on(t.artistId),
+    index("upcoming_releases_release_date_idx").on(t.releaseDate),
+  ],
+);
 
 export const featuredItems = pgTable("featured_items", {
   id: uuid("id").primaryKey().defaultRandom(),
