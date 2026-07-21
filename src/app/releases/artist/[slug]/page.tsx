@@ -14,6 +14,7 @@ import { SiteHeader, SiteFooter } from "@/components/site-header";
 import { ArtistSocialsRow } from "@/components/artist-socials";
 import { stripLeadingArtist } from "@/lib/utils";
 import { UpcomingCoverImage } from "@/components/upcoming-cover-image";
+import { PlayableSpotifyCover } from "@/components/playable-spotify-cover";
 import type { ArtistSocials } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -213,15 +214,11 @@ function ReleaseCardTile({
       ) : null}
     </div>
   ) : (
-    <div className="relative w-full rounded-t-xl overflow-hidden">
-      <iframe
-        src={`https://open.spotify.com/embed/album/${card.albumSpotifyId}?theme=0`}
-        title={displayTitle}
-        className="w-full h-[232px] border-0"
-        loading="lazy"
-        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-      />
-    </div>
+    <PlayableSpotifyCover
+      albumSpotifyId={card.albumSpotifyId!}
+      coverImageUrl={card.coverImageUrl}
+      title={displayTitle}
+    />
   );
 
   // Audio preview for upcoming releases (pulled from an Airtable attachment
