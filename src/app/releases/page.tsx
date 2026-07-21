@@ -110,8 +110,8 @@ export default async function ReleasesHome({
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="text-white truncate">{a.name}</div>
-                      {/* Compact meta — collapses on hover to make room for
-                          the expanded release detail below. */}
+                      {/* Compact meta — hidden on hover to make room for
+                          the richer expansion below. */}
                       <div className="text-xs text-white/50 truncate mt-0.5 group-hover:hidden">
                         {a.nextUpcoming
                           ? `Upcoming · ${formatDate(a.nextUpcoming.releaseDate)}`
@@ -119,32 +119,33 @@ export default async function ReleasesHome({
                             ? `Latest · ${formatDate(a.latestRelease.releaseDate)}`
                             : "No releases yet"}
                       </div>
-                      {/* Expanded meta — one or two lines, always shows
-                          both when available so the hover reveals real
-                          new info. On touch devices this stays hidden. */}
-                      <div className="hidden group-hover:flex flex-col gap-0.5 mt-0.5 text-xs">
+                      {/* Expanded on hover — cover thumb + title + date for
+                          each release. Upcoming has no real cover (Airtable
+                          feed doesn't include art) so we use a subtle
+                          placeholder gradient with the artist's initials. */}
+                      <div className="hidden group-hover:flex flex-col gap-2 mt-2">
                         {a.nextUpcoming ? (
-                          <div className="text-white/70 truncate">
-                            <span className="text-white/40">Upcoming ·</span>{" "}
-                            {formatDate(a.nextUpcoming.releaseDate)}
-                            <span className="text-white/40"> · </span>
-                            <span className="text-white/80">
-                              {a.nextUpcoming.title}
-                            </span>
-                          </div>
+                          <ReleaseHoverRow
+                            label="Upcoming"
+                            title={a.nextUpcoming.title}
+                            date={a.nextUpcoming.releaseDate}
+                            coverImageUrl={null}
+                            fallbackInitials={artistInitials(a.name)}
+                          />
                         ) : null}
                         {a.latestRelease ? (
-                          <div className="text-white/70 truncate">
-                            <span className="text-white/40">Latest ·</span>{" "}
-                            {formatDate(a.latestRelease.releaseDate)}
-                            <span className="text-white/40"> · </span>
-                            <span className="text-white/80">
-                              {a.latestRelease.title}
-                            </span>
-                          </div>
+                          <ReleaseHoverRow
+                            label="Latest"
+                            title={a.latestRelease.title}
+                            date={a.latestRelease.releaseDate}
+                            coverImageUrl={a.latestRelease.coverImageUrl}
+                            fallbackInitials={artistInitials(a.name)}
+                          />
                         ) : null}
                         {!a.nextUpcoming && !a.latestRelease ? (
-                          <div className="text-white/40">No releases yet</div>
+                          <div className="text-xs text-white/40">
+                            No releases yet
+                          </div>
                         ) : null}
                       </div>
                     </div>
@@ -161,6 +162,55 @@ export default async function ReleasesHome({
         roleTitle={settings.roleTitle}
       />
     </>
+  );
+}
+
+function artistInitials(name: string): string {
+  return name
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+// One release row inside a hover-expanded artist card: small cover thumb
+// (or a placeholder gradient if none) + label · date + title.
+function ReleaseHoverRow({
+  label,
+  title,
+  date,
+  coverImageUrl,
+  fallbackInitials,
+}: {
+  label: string;
+  title: string;
+  date: string | null;
+  coverImageUrl: string | null;
+  fallbackInitials: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 min-w-0">
+      {coverImageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={coverImageUrl}
+          alt={title}
+          className="w-10 h-10 rounded object-cover shrink-0"
+        />
+      ) : (
+        <div className="w-10 h-10 rounded bg-gradient-to-br from-neutral-800 via-neutral-900 to-black flex items-center justify-center text-white/20 text-[10px] display tracking-wider shrink-0">
+          {fallbackInitials || "◐"}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] uppercase tracking-widest text-white/40">
+          {label} · {formatDate(date)}
+        </div>
+        <div className="text-xs text-white/85 truncate">{title}</div>
+      </div>
+    </div>
   );
 }
 
