@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { unstable_cache } from "next/cache";
 import {
   getArtistBySlug,
+  getArtistHistory,
   getLatestReleaseFor,
   getSiteSettings,
   getUpcomingReleasesFor,
@@ -30,6 +31,7 @@ const getArtistReleasesData = unstable_cache(
       getLatestReleaseFor(artistId),
       getUpcomingReleasesFor(artistId),
       getSiteSettings(),
+      getArtistHistory(artistId),
     ]),
   ["release-artist-data"],
   { revalidate: 60, tags: ["public-data"] },
@@ -63,7 +65,11 @@ export default async function ReleaseArtistPage({
   const artist = await getArtistBySlugCached(slug);
   if (!artist) notFound();
 
-  const [latest, upcoming, settings] = await getArtistReleasesData(artist.id);
+  const [latest, upcoming, settings, history] = await getArtistReleasesData(
+    artist.id,
+  );
+  const latestSnapshot = history[history.length - 1] ?? null;
+  const monthlyListeners = latestSnapshot?.monthlyListeners ?? null;
 
   // Merge into one chronological grid: upcoming first (soonest → latest),
   // then the most-recent past release. Upcoming cards are visually distinct
@@ -88,19 +94,19 @@ export default async function ReleaseArtistPage({
         </div>
 
         <section className="pb-10">
-          <div className="flex items-center gap-5 mb-4">
+          <div className="flex items-start gap-5 mb-4">
             {artist.imageUrl ? (
               <Image
                 src={artist.imageUrl}
                 alt={artist.name}
                 width={80}
                 height={80}
-                className="rounded-full w-16 h-16 sm:w-20 sm:h-20"
+                className="rounded-full w-16 h-16 sm:w-20 sm:h-20 shrink-0 mt-1"
               />
             ) : (
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-neutral-800" />
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-neutral-800 shrink-0 mt-1" />
             )}
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h1 className="display text-3xl sm:text-4xl md:text-5xl text-white truncate">
                 {artist.name}
               </h1>
@@ -110,6 +116,16 @@ export default async function ReleaseArtistPage({
                 </div>
               ) : null}
             </div>
+            {monthlyListeners !== null ? (
+              <div className="text-right shrink-0">
+                <div className="display text-2xl sm:text-3xl text-white tabular-nums">
+                  {formatCount(monthlyListeners)}
+                </div>
+                <div className="text-[10px] uppercase tracking-widest text-white/40 mt-1">
+                  Monthly listeners
+                </div>
+              </div>
+            ) : null}
           </div>
           {artist.bio ? (
             <p className="max-w-3xl text-sm md:text-base text-white/60 leading-relaxed whitespace-pre-wrap mt-3">
@@ -318,6 +334,12 @@ function ReleaseCardTile({
     );
   }
   return <div className="group h-full">{inner}</div>;
+}
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`;
+  return n.toLocaleString();
 }
 
 function initialsOf(title: string): string {

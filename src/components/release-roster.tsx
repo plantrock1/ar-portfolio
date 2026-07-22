@@ -22,6 +22,7 @@ export type ReleaseRosterArtist = {
   imageUrl: string | null;
   latestRelease: LatestRelease | null;
   nextUpcoming: UpcomingRelease | null;
+  monthlyListeners: number | null;
 };
 
 export function ReleaseRoster({
@@ -109,6 +110,12 @@ function ArtistCard({ artist }: { artist: ReleaseRosterArtist }) {
               : artist.latestRelease
                 ? `Latest · ${formatDate(artist.latestRelease.releaseDate)}`
                 : "No releases yet"}
+            {artist.monthlyListeners !== null ? (
+              <span className="text-white/30">
+                {" · "}
+                {formatListeners(artist.monthlyListeners)} monthly
+              </span>
+            ) : null}
           </div>
         </div>
         <span className="text-white/30 text-xs shrink-0">→</span>
@@ -125,6 +132,16 @@ function ArtistCard({ artist }: { artist: ReleaseRosterArtist }) {
           }
         >
           <div className="rounded-xl border border-white/15 bg-neutral-950/95 backdrop-blur-md shadow-2xl p-3">
+            {artist.monthlyListeners !== null ? (
+              <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
+                <span className="text-[10px] uppercase tracking-widest text-white/40">
+                  Monthly listeners
+                </span>
+                <span className="text-sm text-white/85 tabular-nums">
+                  {formatListeners(artist.monthlyListeners)}
+                </span>
+              </div>
+            ) : null}
             <div className="grid grid-cols-2 gap-3">
               <ReleaseSlot
                 label="Upcoming"
@@ -299,6 +316,12 @@ function artistInitials(name: string): string {
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase() ?? "")
     .join("");
+}
+
+function formatListeners(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`;
+  return n.toLocaleString();
 }
 
 function formatDate(iso: string | null): string {
