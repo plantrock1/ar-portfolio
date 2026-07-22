@@ -666,17 +666,86 @@ export function AdminDashboard({
         </button>
       </div>
 
+      {gha.configured ? (
+        <div className="sticky top-0 z-30 -mx-6 mb-8 border-b border-white/5 bg-black/70 backdrop-blur-md px-6 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-[10px] uppercase tracking-widest text-white/40 shrink-0">
+              Refresh
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => triggerGhaRefresh("shallow")}
+                disabled={
+                  isTriggeringGha || run?.status === "running"
+                }
+                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white hover:bg-white/5 disabled:opacity-50"
+                title="Shallow refresh: monthly listeners + top 5 tracks (3–10 min)"
+              >
+                {isTriggeringGha ? "Triggering…" : "Shallow"}
+              </button>
+              <button
+                onClick={() => triggerGhaRefresh("deep")}
+                disabled={
+                  isTriggeringGha ||
+                  run?.status === "running" ||
+                  !sessionState.hasCookie
+                }
+                className="rounded-lg bg-[#1db954] px-3 py-1.5 text-xs font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
+                title={
+                  !sessionState.hasCookie
+                    ? "Requires sp_dc session cookie"
+                    : "Deep refresh: lifetime stream totals (15 min–1 hr)"
+                }
+              >
+                Deep
+              </button>
+              {run && run.status === "running" ? (
+                <button
+                  onClick={cancelRunningRefresh}
+                  className="rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-300 hover:bg-red-500/20"
+                >
+                  Stop
+                </button>
+              ) : null}
+            </div>
+            <div className="min-w-0 flex-1 text-xs text-white/50 truncate">
+              {run && run.status === "running" ? (
+                <span className="text-white/70">
+                  Running · {run.phase ?? "…"}
+                </span>
+              ) : run ? (
+                <LastRunLabel run={run} />
+              ) : lastRefreshedAt ? (
+                <>
+                  Last:{" "}
+                  {new Date(lastRefreshedAt).toLocaleString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </>
+              ) : (
+                <span className="text-white/30">Never refreshed</span>
+              )}
+            </div>
+          </div>
+          {run && run.status === "running" ? (
+            <div className="mt-2">
+              <ProgressBar run={run} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {siteMode === "releases" ? (
         <ReleaseModePanel initialStatus={initialAirtableStatus} />
       ) : null}
 
-      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
-        <div className="flex items-baseline justify-between mb-4">
-          <h2 className="display text-xl text-white">Your profile</h2>
-          <span className="text-xs text-white/40">
-            Shown on the home page and in the browser tab
-          </span>
-        </div>
+      <CollapsibleSection
+        title="Your profile"
+        subtitle="Shown on the home page and in the browser tab"
+      >
         <div className="mb-4 grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3">
           <div>
             <label className="text-[10px] uppercase tracking-widest text-white/40">
@@ -960,10 +1029,9 @@ export function AdminDashboard({
         </>
           );
         })()}
-      </section>
+      </CollapsibleSection>
 
-      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
-        <h2 className="display text-xl text-white mb-4">Add artist</h2>
+      <CollapsibleSection title="Add artist">
         <BulkAddArtists
           onAddBatch={async (urls) => {
             let added = 0;
@@ -1181,7 +1249,7 @@ export function AdminDashboard({
             </details>
           </div>
         ) : null}
-      </section>
+      </CollapsibleSection>
 
       <section>
         <div className="flex flex-wrap items-baseline justify-between gap-3 mb-4">
@@ -1272,11 +1340,15 @@ export function AdminDashboard({
         />
       </div>
 
-      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
-        <div className="flex items-baseline justify-between mb-4">
-          <h2 className="display text-xl text-white">Spotify session</h2>
-          <SessionBadge status={sessionState.hasCookie ? sessionState.status : "absent"} />
-        </div>
+      <CollapsibleSection
+        title="Spotify session"
+        subtitle={
+          <SessionBadge
+            status={sessionState.hasCookie ? sessionState.status : "absent"}
+          />
+        }
+        defaultOpen={false}
+      >
         <p className="text-xs text-white/50 leading-relaxed mb-4">
           Pasting your <code className="text-white/80">sp_dc</code> cookie lets the scraper
           see per-track stream counts on album pages. One-time setup; cookie lasts
@@ -1329,10 +1401,9 @@ export function AdminDashboard({
             {isSavingSession ? "Saving…" : "Save cookie"}
           </button>
         </div>
-      </section>
+      </CollapsibleSection>
 
-      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
-        <h2 className="display text-xl text-white mb-4">Admin password</h2>
+      <CollapsibleSection title="Admin password" defaultOpen={false}>
         <p className="text-xs text-white/50 mb-4">
           Change the password used to sign into <code>/admin</code>. Minimum 8 characters.
         </p>
@@ -1378,7 +1449,7 @@ export function AdminDashboard({
             </button>
           </div>
         </form>
-      </section>
+      </CollapsibleSection>
     </main>
   );
 }
@@ -1468,6 +1539,47 @@ function BulkAddArtists({
         </div>
       ) : null}
     </div>
+  );
+}
+
+// A minimal card wrapper with a chevron-toggled body. Preserves the exact
+// existing "rounded-xl border ..." card visual but adds a collapse
+// affordance so admins can skip past sections they aren't touching.
+function CollapsibleSection({
+  title,
+  subtitle,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  subtitle?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-baseline justify-between text-left group"
+        aria-expanded={open}
+      >
+        <div className="flex items-baseline gap-3 min-w-0">
+          <h2 className="display text-xl text-white">{title}</h2>
+          {subtitle ? (
+            <span className="text-xs text-white/40 truncate">{subtitle}</span>
+          ) : null}
+        </div>
+        <span
+          className={`text-white/40 text-xs shrink-0 pl-2 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+          aria-hidden="true"
+        >
+          ▾
+        </span>
+      </button>
+      {open ? <div className="mt-4">{children}</div> : null}
+    </section>
   );
 }
 
@@ -1903,13 +2015,10 @@ function FeaturedSection({
   }
 
   return (
-    <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
-      <div className="flex items-baseline justify-between mb-2">
-        <h2 className="display text-xl text-white">Featured media</h2>
-        <span className="text-xs text-white/40">
-          {items.length} {items.length === 1 ? "item" : "items"}
-        </span>
-      </div>
+    <CollapsibleSection
+      title="Featured media"
+      subtitle={`${items.length} ${items.length === 1 ? "item" : "items"}`}
+    >
       <p className="text-xs text-white/50 mb-4">
         Articles, videos, interviews. YouTube links auto-fetch thumbnails.
         Hidden from the home page when empty. Wrap text in{" "}
@@ -2037,7 +2146,7 @@ function FeaturedSection({
           ))}
         </ul>
       )}
-    </section>
+    </CollapsibleSection>
   );
 }
 
