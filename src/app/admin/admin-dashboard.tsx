@@ -1726,6 +1726,7 @@ function ArtistRow({
 
   // Manual data entry (contingency for when scraping can't run)
   const [mlInput, setMlInput] = useState("");
+  const [latestStreamsInput, setLatestStreamsInput] = useState("");
   const [manualTracks, setManualTracks] = useState(
     Array.from({ length: 5 }, () => ({ name: "", streams: "", spotifyUrl: "" })),
   );
@@ -1770,6 +1771,16 @@ function ArtistRow({
       setManualErr("Monthly listeners must be a whole number");
       return;
     }
+    const lrRaw = latestStreamsInput.replace(/[^0-9]/g, "");
+    const latestStreams =
+      latestStreamsInput.trim() === "" ? undefined : Number(lrRaw);
+    if (
+      latestStreams !== undefined &&
+      (!Number.isFinite(latestStreams) || latestStreams < 0)
+    ) {
+      setManualErr("Latest release streams must be a whole number");
+      return;
+    }
     const tracks = manualTracks
       .filter((t) => t.spotifyUrl.trim() && t.name.trim() && t.streams.trim())
       .map((t) => ({
@@ -1777,9 +1788,13 @@ function ArtistRow({
         name: t.name.trim(),
         streams: Number(t.streams.replace(/[^0-9]/g, "")),
       }));
-    if (ml === undefined && tracks.length === 0) {
+    if (
+      ml === undefined &&
+      tracks.length === 0 &&
+      latestStreams === undefined
+    ) {
       setManualErr(
-        "Enter monthly listeners, or a full track row (name + streams + URL)",
+        "Enter monthly listeners, latest release streams, or a full track row",
       );
       return;
     }
@@ -1790,6 +1805,9 @@ function ArtistRow({
       body: JSON.stringify({
         artistId: artist.id,
         ...(ml !== undefined ? { monthlyListeners: ml } : {}),
+        ...(latestStreams !== undefined
+          ? { latestReleaseStreams: latestStreams }
+          : {}),
         ...(tracks.length ? { tracks } : {}),
       }),
     });
@@ -1964,7 +1982,7 @@ function ArtistRow({
                 point, so a later refresh supersedes it.
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-3 items-start">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
               <div>
                 <label className="text-[10px] uppercase tracking-widest text-white/40">
                   Monthly listeners
@@ -1976,6 +1994,21 @@ function ArtistRow({
                   placeholder="e.g., 151875"
                   className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
                 />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-white/40">
+                  Latest release streams
+                </label>
+                <input
+                  value={latestStreamsInput}
+                  onChange={(e) => setLatestStreamsInput(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="e.g., 2400000"
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                />
+                <div className="mt-1 text-[10px] text-white/30">
+                  Shows on release-mode artist pages next to the latest cover.
+                </div>
               </div>
             </div>
             <div className="mt-3">

@@ -207,6 +207,10 @@ export const latestReleases = pgTable("latest_releases", {
   albumType: text("album_type"), // 'album' | 'single' | 'compilation'
   coverImageUrl: text("cover_image_url"),
   spotifyUrl: text("spotify_url"),
+  // Total streams for the latest release. Populated by the manual-data
+  // admin flow today (Spotify Web API doesn't expose stream counts —
+  // scraping via sp_dc is the automated path if we add it later).
+  totalStreams: bigint("total_streams", { mode: "number" }),
   syncedAt: timestamp("synced_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

@@ -25,13 +25,26 @@ const TrackInput = z.object({
 const Body = z
   .object({
     artistId: z.string().uuid(),
-    // Either field is optional; send whichever the admin filled in.
+    // Any field is optional; send whichever the admin filled in.
     monthlyListeners: z.number().int().min(0).max(10_000_000_000).nullable().optional(),
     tracks: z.array(TrackInput).max(10).optional(),
+    // Total streams for the artist's most recent release (release-mode
+    // sites). Nullable so admins can clear a previous manual value.
+    latestReleaseStreams: z
+      .number()
+      .int()
+      .min(0)
+      .max(100_000_000_000)
+      .nullable()
+      .optional(),
   })
-  .refine((v) => v.monthlyListeners !== undefined || v.tracks !== undefined, {
-    message: "nothing to save",
-  });
+  .refine(
+    (v) =>
+      v.monthlyListeners !== undefined ||
+      v.tracks !== undefined ||
+      v.latestReleaseStreams !== undefined,
+    { message: "nothing to save" },
+  );
 
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) {
@@ -44,7 +57,8 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { artistId, monthlyListeners, tracks } = parsed.data;
+  const { artistId, monthlyListeners, tracks, latestReleaseStreams } =
+    parsed.data;
 
   // Confirm the artist exists (and get spotifyId for nothing in particular,
   // but a clean 404 beats a foreign-key explosion).
@@ -153,6 +167,19 @@ export async function POST(req: NextRequest) {
         streams: t.streams,
       });
     }
+  }
+
+  // --- Latest release streams (release-mode) ---
+  // Sets latest_releases.total_streams for this artist. Only updates the
+  // column (not the whole row) so title/date/coverImageUrl etc. captured
+  // by the Spotify-side refresh aren't clobbered. No-op if no
+  // latest_releases row exists for this artist yet — a later refresh
+  // will create it and the number can be entered again.
+  if (latestReleaseStreams !== undefined) {
+    await db
+      .update(schema.latestReleases)
+      .set({ totalStreams: latestReleaseStreams })
+      .where(eq(schema.latestReleases.artistId, artistId));
   }
 
   if (trackErrors.length > 0) {

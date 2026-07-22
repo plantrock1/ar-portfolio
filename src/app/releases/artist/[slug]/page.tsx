@@ -116,14 +116,28 @@ export default async function ReleaseArtistPage({
                 </div>
               ) : null}
             </div>
-            {monthlyListeners !== null ? (
-              <div className="text-right shrink-0">
-                <div className="display text-2xl sm:text-3xl text-white tabular-nums">
-                  {formatCount(monthlyListeners)}
-                </div>
-                <div className="text-[10px] uppercase tracking-widest text-white/40 mt-1">
-                  Monthly listeners
-                </div>
+            {monthlyListeners !== null || latest?.totalStreams ? (
+              <div className="text-right shrink-0 flex gap-6">
+                {monthlyListeners !== null ? (
+                  <div>
+                    <div className="display text-2xl sm:text-3xl text-white tabular-nums">
+                      {formatCount(monthlyListeners)}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-widest text-white/40 mt-1">
+                      Monthly listeners
+                    </div>
+                  </div>
+                ) : null}
+                {latest?.totalStreams ? (
+                  <div>
+                    <div className="display text-2xl sm:text-3xl text-white tabular-nums">
+                      {formatCount(latest.totalStreams)}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-widest text-white/40 mt-1">
+                      Latest streams
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
