@@ -690,27 +690,41 @@ export function AdminDashboard({
                 disabled={
                   isTriggeringGha || run?.status === "running"
                 }
-                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white hover:bg-white/5 disabled:opacity-50"
-                title="Shallow refresh: monthly listeners + top 5 tracks (3–10 min)"
-              >
-                {isTriggeringGha ? "Triggering…" : "Shallow"}
-              </button>
-              <button
-                onClick={() => triggerGhaRefresh("deep")}
-                disabled={
-                  isTriggeringGha ||
-                  run?.status === "running" ||
-                  !sessionState.hasCookie
+                className={
+                  siteMode === "releases"
+                    ? "rounded-lg bg-[#1db954] px-3 py-1.5 text-xs font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
+                    : "rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white hover:bg-white/5 disabled:opacity-50"
                 }
-                className="rounded-lg bg-[#1db954] px-3 py-1.5 text-xs font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
                 title={
-                  !sessionState.hasCookie
-                    ? "Requires sp_dc session cookie"
-                    : "Deep refresh: lifetime stream totals (15 min–1 hr)"
+                  siteMode === "releases"
+                    ? "Refresh: monthly listeners + latest release streams"
+                    : "Shallow refresh: monthly listeners + top 5 tracks (3–10 min)"
                 }
               >
-                Deep
+                {isTriggeringGha
+                  ? "Triggering…"
+                  : siteMode === "releases"
+                    ? "Refresh"
+                    : "Shallow"}
               </button>
+              {siteMode !== "releases" ? (
+                <button
+                  onClick={() => triggerGhaRefresh("deep")}
+                  disabled={
+                    isTriggeringGha ||
+                    run?.status === "running" ||
+                    !sessionState.hasCookie
+                  }
+                  className="rounded-lg bg-[#1db954] px-3 py-1.5 text-xs font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
+                  title={
+                    !sessionState.hasCookie
+                      ? "Requires sp_dc session cookie"
+                      : "Deep refresh: lifetime stream totals (15 min–1 hr)"
+                  }
+                >
+                  Deep
+                </button>
+              ) : null}
               {run && run.status === "running" ? (
                 <button
                   onClick={cancelRunningRefresh}
@@ -1187,34 +1201,42 @@ export function AdminDashboard({
                 isTriggeringGha ||
                 run?.status === "running"
               }
-              className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
+              className={
+                siteMode === "releases"
+                  ? "rounded-lg bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
+                  : "rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
+              }
               title={
                 gha.configured
-                  ? "Fast update on GitHub Actions (3–10 min): monthly listeners + top 5 streams per artist."
+                  ? siteMode === "releases"
+                    ? "Refresh: monthly listeners + latest release streams for every artist."
+                    : "Fast update on GitHub Actions (3–10 min): monthly listeners + top 5 streams per artist."
                   : "Not configured yet — see the setup section below."
               }
             >
               {isTriggeringGha ? "Triggering…" : "Refresh"}
             </button>
-            <button
-              onClick={() => triggerGhaRefresh("deep")}
-              disabled={
-                !gha.configured ||
-                isTriggeringGha ||
-                run?.status === "running" ||
-                !sessionState.hasCookie
-              }
-              className="rounded-lg bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
-              title={
-                !gha.configured
-                  ? "Not configured yet — see the setup section below."
-                  : !sessionState.hasCookie
-                    ? "Requires sp_dc session cookie (see above)"
-                    : "Full update on GitHub Actions (15 min–1 hr): lifetime stream totals for every track."
-              }
-            >
-              {isTriggeringGha ? "Triggering…" : "Deep refresh"}
-            </button>
+            {siteMode !== "releases" ? (
+              <button
+                onClick={() => triggerGhaRefresh("deep")}
+                disabled={
+                  !gha.configured ||
+                  isTriggeringGha ||
+                  run?.status === "running" ||
+                  !sessionState.hasCookie
+                }
+                className="rounded-lg bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
+                title={
+                  !gha.configured
+                    ? "Not configured yet — see the setup section below."
+                    : !sessionState.hasCookie
+                      ? "Requires sp_dc session cookie (see above)"
+                      : "Full update on GitHub Actions (15 min–1 hr): lifetime stream totals for every track."
+                }
+              >
+                {isTriggeringGha ? "Triggering…" : "Deep refresh"}
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="mt-4 grid sm:grid-cols-2 gap-3 text-xs text-white/50 leading-relaxed">
