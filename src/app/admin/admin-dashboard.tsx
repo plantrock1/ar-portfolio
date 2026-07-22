@@ -126,6 +126,18 @@ export function AdminDashboard({
   // list collapsed so a big roster doesn't force a long scroll.
   const [rosterQuery, setRosterQuery] = useState("");
   const [rosterShowAll, setRosterShowAll] = useState(false);
+  // Admin is a hub + section-view router. "hub" is the tile grid; other
+  // values render exactly one section's dedicated view with a back link.
+  type AdminSection =
+    | "hub"
+    | "profile"
+    | "add-artist"
+    | "roster"
+    | "featured"
+    | "session"
+    | "password"
+    | "releases";
+  const [currentSection, setCurrentSection] = useState<AdminSection>("hub");
   const [isAdding, startAdding] = useTransition();
   const [isSavingBio, startSavingBio] = useTransition();
   const [isSavingSession, startSavingSession] = useTransition();
@@ -738,13 +750,75 @@ export function AdminDashboard({
         </div>
       ) : null}
 
-      {siteMode === "releases" ? (
-        <ReleaseModePanel initialStatus={initialAirtableStatus} />
+      {currentSection === "hub" ? (
+        <>
+          {siteMode === "releases" ? (
+            <div className="mb-8">
+              <div className="text-[10px] uppercase tracking-widest text-white/40 mb-3">
+                Release-mode
+              </div>
+              <AdminTile
+                title="Releases · Airtable"
+                subtitle="Refresh releases from Spotify · Connect + sync Airtable"
+                onClick={() => setCurrentSection("releases")}
+                accent
+              />
+            </div>
+          ) : null}
+          <div className="text-[10px] uppercase tracking-widest text-white/40 mb-3">
+            Sections
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <AdminTile
+              title="Your profile"
+              subtitle="Name, bio, socials, role title"
+              onClick={() => setCurrentSection("profile")}
+            />
+            <AdminTile
+              title="Add artist"
+              subtitle="Import by Spotify URL · single or bulk"
+              onClick={() => setCurrentSection("add-artist")}
+            />
+            <AdminTile
+              title={`Roster · ${artists.length}`}
+              subtitle="Edit / remove artists · manual data entry"
+              onClick={() => setCurrentSection("roster")}
+            />
+            <AdminTile
+              title="Featured media"
+              subtitle={`${press.length} item${press.length === 1 ? "" : "s"} · articles, videos, interviews`}
+              onClick={() => setCurrentSection("featured")}
+            />
+            {siteMode !== "releases" ? (
+              <AdminTile
+                title="Spotify session"
+                subtitle="sp_dc cookie for scraping (analytics mode)"
+                onClick={() => setCurrentSection("session")}
+              />
+            ) : null}
+            <AdminTile
+              title="Admin password"
+              subtitle="Change the /admin login password"
+              onClick={() => setCurrentSection("password")}
+            />
+          </div>
+        </>
       ) : null}
 
-      <CollapsibleSection
+      {currentSection === "releases" && siteMode === "releases" ? (
+        <SectionView
+          title="Releases · Airtable"
+          onBack={() => setCurrentSection("hub")}
+        >
+          <ReleaseModePanel initialStatus={initialAirtableStatus} />
+        </SectionView>
+      ) : null}
+
+      {currentSection === "profile" ? (
+      <SectionView
         title="Your profile"
         subtitle="Shown on the home page and in the browser tab"
+        onBack={() => setCurrentSection("hub")}
       >
         <div className="mb-4 grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3">
           <div>
@@ -1029,9 +1103,11 @@ export function AdminDashboard({
         </>
           );
         })()}
-      </CollapsibleSection>
+      </SectionView>
+      ) : null}
 
-      <CollapsibleSection title="Add artist">
+      {currentSection === "add-artist" ? (
+      <SectionView title="Add artist" onBack={() => setCurrentSection("hub")}>
         <BulkAddArtists
           onAddBatch={async (urls) => {
             let added = 0;
@@ -1249,13 +1325,15 @@ export function AdminDashboard({
             </details>
           </div>
         ) : null}
-      </CollapsibleSection>
+      </SectionView>
+      ) : null}
 
-      <section>
-        <div className="flex flex-wrap items-baseline justify-between gap-3 mb-4">
-          <h2 className="display text-xl text-white">
-            Roster · {artists.length}
-          </h2>
+      {currentSection === "roster" ? (
+      <SectionView
+        title={`Roster · ${artists.length}`}
+        onBack={() => setCurrentSection("hub")}
+      >
+        <div className="flex flex-wrap items-baseline justify-end gap-3 mb-4">
           {artists.length > 0 ? (
             <button
               type="button"
@@ -1329,25 +1407,30 @@ export function AdminDashboard({
             })()}
           </>
         )}
-      </section>
+      </SectionView>
+      ) : null}
 
-      <div className="mt-8">
+      {currentSection === "featured" ? (
+      <div className="mt-0">
         <FeaturedSection
           items={press}
+          onBack={() => setCurrentSection("hub")}
           onAdd={addFeatured}
           onEdit={editFeatured}
           onRemove={removeFeatured}
         />
       </div>
+      ) : null}
 
-      <CollapsibleSection
+      {currentSection === "session" ? (
+      <SectionView
         title="Spotify session"
         subtitle={
           <SessionBadge
             status={sessionState.hasCookie ? sessionState.status : "absent"}
           />
         }
-        defaultOpen={false}
+        onBack={() => setCurrentSection("hub")}
       >
         <p className="text-xs text-white/50 leading-relaxed mb-4">
           Pasting your <code className="text-white/80">sp_dc</code> cookie lets the scraper
@@ -1401,9 +1484,11 @@ export function AdminDashboard({
             {isSavingSession ? "Saving…" : "Save cookie"}
           </button>
         </div>
-      </CollapsibleSection>
+      </SectionView>
+      ) : null}
 
-      <CollapsibleSection title="Admin password" defaultOpen={false}>
+      {currentSection === "password" ? (
+      <SectionView title="Admin password" onBack={() => setCurrentSection("hub")}>
         <p className="text-xs text-white/50 mb-4">
           Change the password used to sign into <code>/admin</code>. Minimum 8 characters.
         </p>
@@ -1449,7 +1534,8 @@ export function AdminDashboard({
             </button>
           </div>
         </form>
-      </CollapsibleSection>
+      </SectionView>
+      ) : null}
     </main>
   );
 }
@@ -1542,44 +1628,67 @@ function BulkAddArtists({
   );
 }
 
-// A minimal card wrapper with a chevron-toggled body. Preserves the exact
-// existing "rounded-xl border ..." card visual but adds a collapse
-// affordance so admins can skip past sections they aren't touching.
-function CollapsibleSection({
+// Wrapper for one section's dedicated view. Header shows an "← Admin" link
+// back to the hub, then the section title + optional subtitle. Body is the
+// section's content — unchanged from before. Kept the "rounded-xl border
+// bg-white/[0.02]" chrome so section views feel like the hub's tiles that
+// expanded rather than a jarringly new layout.
+function SectionView({
   title,
   subtitle,
-  defaultOpen = true,
+  onBack,
   children,
 }: {
   title: string;
   subtitle?: React.ReactNode;
-  defaultOpen?: boolean;
+  onBack: () => void;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
     <section className="rounded-xl border border-white/5 bg-white/[0.02] p-6 mb-8">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-baseline justify-between text-left group"
-        aria-expanded={open}
-      >
-        <div className="flex items-baseline gap-3 min-w-0">
-          <h2 className="display text-xl text-white">{title}</h2>
-          {subtitle ? (
-            <span className="text-xs text-white/40 truncate">{subtitle}</span>
-          ) : null}
-        </div>
-        <span
-          className={`text-white/40 text-xs shrink-0 pl-2 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
-          aria-hidden="true"
+      <div className="flex items-baseline gap-3 mb-4 flex-wrap">
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-xs text-white/50 hover:text-white transition-colors"
         >
-          ▾
-        </span>
-      </button>
-      {open ? <div className="mt-4">{children}</div> : null}
+          ← Admin
+        </button>
+        <h2 className="display text-xl text-white">{title}</h2>
+        {subtitle ? (
+          <span className="text-xs text-white/40 truncate">{subtitle}</span>
+        ) : null}
+      </div>
+      {children}
     </section>
+  );
+}
+
+// One clickable tile on the admin hub. Compact card with title + subtitle.
+function AdminTile({
+  title,
+  subtitle,
+  onClick,
+  accent = false,
+}: {
+  title: string;
+  subtitle: string;
+  onClick: () => void;
+  accent?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`text-left rounded-xl border p-5 transition-colors ${
+        accent
+          ? "border-white/15 bg-white/[0.04] hover:bg-white/[0.06]"
+          : "border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]"
+      }`}
+    >
+      <div className="display text-lg text-white mb-1">{title}</div>
+      <div className="text-xs text-white/50">{subtitle}</div>
+    </button>
   );
 }
 
@@ -1938,11 +2047,13 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB
 
 function FeaturedSection({
   items,
+  onBack,
   onAdd,
   onEdit,
   onRemove,
 }: {
   items: FeaturedItem[];
+  onBack: () => void;
   onAdd: (body: {
     title: string;
     url: string;
@@ -2015,9 +2126,10 @@ function FeaturedSection({
   }
 
   return (
-    <CollapsibleSection
+    <SectionView
       title="Featured media"
       subtitle={`${items.length} ${items.length === 1 ? "item" : "items"}`}
+      onBack={onBack}
     >
       <p className="text-xs text-white/50 mb-4">
         Articles, videos, interviews. YouTube links auto-fetch thumbnails.
@@ -2146,7 +2258,7 @@ function FeaturedSection({
           ))}
         </ul>
       )}
-    </CollapsibleSection>
+    </SectionView>
   );
 }
 
