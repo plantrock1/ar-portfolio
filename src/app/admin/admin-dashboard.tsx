@@ -122,6 +122,10 @@ export function AdminDashboard({
     initialRosterDesignations ?? [],
   );
   const [newDesignation, setNewDesignation] = useState("");
+  // Roster search + reveal state. Empty query + not-showing-all keeps the
+  // list collapsed so a big roster doesn't force a long scroll.
+  const [rosterQuery, setRosterQuery] = useState("");
+  const [rosterShowAll, setRosterShowAll] = useState(false);
   const [isAdding, startAdding] = useTransition();
   const [isSavingBio, startSavingBio] = useTransition();
   const [isSavingSession, startSavingSession] = useTransition();
@@ -1180,29 +1184,82 @@ export function AdminDashboard({
       </section>
 
       <section>
-        <h2 className="display text-xl text-white mb-4">
-          Roster · {artists.length}
-        </h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-3 mb-4">
+          <h2 className="display text-xl text-white">
+            Roster · {artists.length}
+          </h2>
+          {artists.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setRosterShowAll((v) => !v)}
+              className="text-xs text-white/50 hover:text-white transition-colors"
+            >
+              {rosterShowAll ? "Collapse" : "Show all"}
+            </button>
+          ) : null}
+        </div>
+
         {artists.length === 0 ? (
           <div className="rounded-xl border border-dashed border-white/10 p-10 text-center text-white/50">
             Empty. Add your first artist above.
           </div>
         ) : (
-          <ul className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
-            {artists.map((a) => (
-              <ArtistRow
-                key={a.id}
-                artist={a}
-                designations={designations}
-                expanded={editingArtistId === a.id}
-                onToggle={() =>
-                  setEditingArtistId(editingArtistId === a.id ? null : a.id)
-                }
-                onSave={(patch) => saveArtist(a.id, patch)}
-                onDelete={() => deleteArtist(a.id)}
+          <>
+            <div className="relative mb-3">
+              <input
+                type="search"
+                value={rosterQuery}
+                onChange={(e) => setRosterQuery(e.target.value)}
+                placeholder={`Search ${artists.length} artist${artists.length === 1 ? "" : "s"}…`}
+                className="w-full rounded-lg border border-white/10 bg-white/5 pl-9 pr-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                aria-label="Search roster"
               />
-            ))}
-          </ul>
+              <span
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm"
+                aria-hidden="true"
+              >
+                ⌕
+              </span>
+            </div>
+            {(() => {
+              const q = rosterQuery.trim().toLowerCase();
+              const filtered = q
+                ? artists.filter((a) => a.name.toLowerCase().includes(q))
+                : rosterShowAll
+                  ? artists
+                  : editingArtistId
+                    ? artists.filter((a) => a.id === editingArtistId)
+                    : [];
+              if (filtered.length === 0) {
+                return (
+                  <div className="rounded-xl border border-dashed border-white/10 p-6 text-center text-xs text-white/40">
+                    {q
+                      ? `No artist matches "${rosterQuery}".`
+                      : "Type above to search, or click Show all to expand the full roster."}
+                  </div>
+                );
+              }
+              return (
+                <ul className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
+                  {filtered.map((a) => (
+                    <ArtistRow
+                      key={a.id}
+                      artist={a}
+                      designations={designations}
+                      expanded={editingArtistId === a.id}
+                      onToggle={() =>
+                        setEditingArtistId(
+                          editingArtistId === a.id ? null : a.id,
+                        )
+                      }
+                      onSave={(patch) => saveArtist(a.id, patch)}
+                      onDelete={() => deleteArtist(a.id)}
+                    />
+                  ))}
+                </ul>
+              );
+            })()}
+          </>
         )}
       </section>
 
