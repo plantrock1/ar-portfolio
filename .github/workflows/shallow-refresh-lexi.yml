@@ -3,6 +3,14 @@ name: Shallow Refresh — Lexi Lindstrom
 on:
   workflow_dispatch:
 
+# Only one Lexi shallow refresh at a time. A second dispatch while one is
+# running would drive a second headless browser against the same Spotify
+# account from a different IP, tripping Spotify's per-account "too many tabs"
+# limit and poisoning both runs' scrapes. Queue the new one instead.
+concurrency:
+  group: shallow-refresh-lexi
+  cancel-in-progress: false
+
 jobs:
   shallow-refresh:
     runs-on: ubuntu-latest

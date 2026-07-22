@@ -381,15 +381,43 @@ export async function runShallowRefreshFull(): Promise<RefreshReport> {
             }
           }
           if (toScrape.length > 0) {
+            await updateRun({
+              phase: "latest-streams",
+              albumsScraped: 0,
+              albumsTotal: toScrape.length,
+              message: `Fetching streams for ${toScrape.length} track${toScrape.length === 1 ? "" : "s"} across ${eligible.length} release${eligible.length === 1 ? "" : "s"}…`,
+            });
             const scraped = await scrapeTrackStreams(
               toScrape.map((t) => t.trackSpotifyId),
-              { spDc: session.spDc, concurrency: 2 },
+              {
+                spDc: session.spDc,
+                concurrency: 2,
+                // Heartbeat + progress + cancel for this phase. Without an
+                // onOne the whole track scrape runs silent: the bar freezes,
+                // Stop is ignored, and the 20-min stale-run watchdog can flip
+                // a live run to "failed". This keeps all three honest.
+                onOne: async (done, total, r) => {
+                  if (await isCancelRequested()) throw new CancelledError();
+                  if (done % 5 === 0 || done === total) {
+                    await updateRun({
+                      phase: "latest-streams",
+                      albumsScraped: done,
+                      albumsTotal: total,
+                      message: `Latest-release streams ${done}/${total}${r.error ? ` (last error: ${r.error.slice(0, 60)})` : ""}`,
+                    });
+                  }
+                },
+              },
             );
             const streamsByTrack = new Map<string, number>();
             for (const s of scraped) {
               if (s.streams !== null)
                 streamsByTrack.set(s.spotifyId, s.streams);
             }
+            const streamHits = streamsByTrack.size;
+            console.log(
+              `[shallow] latest-release streams: ${streamHits}/${scraped.length} track pages returned a count`,
+            );
             // Sum per artist and update total_streams.
             const totalByArtist = new Map<string, number>();
             for (const t of toScrape) {
@@ -406,6 +434,9 @@ export async function runShallowRefreshFull(): Promise<RefreshReport> {
                 .set({ totalStreams: total })
                 .where(eq(schema.latestReleases.artistId, artistId));
             }
+            console.log(
+              `[shallow] latest-release total_streams written for ${totalByArtist.size}/${eligible.length} releases`,
+            );
           }
         }
       } catch (e) {
