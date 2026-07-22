@@ -7,7 +7,11 @@ import {
   checkSession,
   type ScrapedTrack,
 } from "@/lib/spotify/scrape";
-import { getAllArtistAlbums, getTrackIsrcs } from "@/lib/spotify/api";
+import {
+  getAlbumTracks,
+  getAllArtistAlbums,
+  getTrackIsrcs,
+} from "@/lib/spotify/api";
 import {
   getSpotifySession,
   markSessionStatus,
@@ -333,6 +337,84 @@ export async function runShallowRefreshFull(): Promise<RefreshReport> {
       }
     }
     const scrapeMisses = roster.length - scrapeHits;
+
+    // Latest-release stream refresh (release-mode).
+    //
+    // For every artist that has a latest_releases row (populated by
+    // /api/cron/refresh-releases hitting the Spotify Web API), fetch the
+    // album's track list via API and scrape each track page for stream
+    // counts, then write the summed total to latest_releases.total_streams.
+    //
+    // Gated on sp_dc being present — no cookie means no scraping. On
+    // analytics-mode deployments latest_releases is typically empty, so
+    // this whole pass no-ops.
+    if (session.spDc) {
+      try {
+        const latestRows = await db.select().from(schema.latestReleases);
+        const rosterIds = new Set(roster.map((r) => r.id));
+        const eligible = latestRows.filter((r) => rosterIds.has(r.artistId));
+        if (eligible.length > 0) {
+          await updateRun({
+            phase: "latest-streams",
+            message: `Fetching stream counts for ${eligible.length} latest release${eligible.length === 1 ? "" : "s"}…`,
+          });
+          type TrackToScrape = {
+            albumArtistId: string;
+            trackSpotifyId: string;
+          };
+          const toScrape: TrackToScrape[] = [];
+          for (const rel of eligible) {
+            if (await isCancelRequested()) throw new CancelledError();
+            try {
+              const tracks = await getAlbumTracks(rel.albumSpotifyId);
+              for (const t of tracks) {
+                toScrape.push({
+                  albumArtistId: rel.artistId,
+                  trackSpotifyId: t.id,
+                });
+              }
+            } catch (e) {
+              console.warn(
+                `[shallow] latest-release album track list failed for ${rel.artistId}:`,
+                e,
+              );
+            }
+          }
+          if (toScrape.length > 0) {
+            const scraped = await scrapeTrackStreams(
+              toScrape.map((t) => t.trackSpotifyId),
+              { spDc: session.spDc, concurrency: 2 },
+            );
+            const streamsByTrack = new Map<string, number>();
+            for (const s of scraped) {
+              if (s.streams !== null)
+                streamsByTrack.set(s.spotifyId, s.streams);
+            }
+            // Sum per artist and update total_streams.
+            const totalByArtist = new Map<string, number>();
+            for (const t of toScrape) {
+              const streams = streamsByTrack.get(t.trackSpotifyId);
+              if (streams === undefined) continue;
+              totalByArtist.set(
+                t.albumArtistId,
+                (totalByArtist.get(t.albumArtistId) ?? 0) + streams,
+              );
+            }
+            for (const [artistId, total] of totalByArtist) {
+              await db
+                .update(schema.latestReleases)
+                .set({ totalStreams: total })
+                .where(eq(schema.latestReleases.artistId, artistId));
+            }
+          }
+        }
+      } catch (e) {
+        if (e instanceof CancelledError) throw e;
+        console.error("[shallow] latest-release stream pass failed:", e);
+        // Don't fail the whole shallow refresh over this — the primary
+        // monthly-listeners + top-tracks pass already succeeded above.
+      }
+    }
 
     await completeRun("done");
     return {

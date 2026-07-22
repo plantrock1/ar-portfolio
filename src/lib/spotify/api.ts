@@ -170,6 +170,38 @@ export async function getTrack(id: string): Promise<SpotifyTrack> {
   return spotify<SpotifyTrack>(`/tracks/${id}`);
 }
 
+export type SpotifyAlbumTrack = {
+  id: string;
+  name: string;
+  duration_ms: number;
+  track_number: number;
+  artists: { id: string; name: string }[];
+};
+
+/**
+ * List tracks on an album via the Spotify Web API. Paginates through the
+ * /albums/{id}/tracks endpoint (up to 50 per page). Doesn't include play
+ * counts — those still require scraping the track page individually.
+ */
+export async function getAlbumTracks(
+  albumId: string,
+): Promise<SpotifyAlbumTrack[]> {
+  const out: SpotifyAlbumTrack[] = [];
+  let offset = 0;
+  for (let i = 0; i < 20; i += 1) {
+    const r = await spotify<{
+      items: SpotifyAlbumTrack[];
+      next: string | null;
+      total: number;
+    }>(`/albums/${albumId}/tracks?limit=50&offset=${offset}`);
+    out.push(...r.items);
+    if (!r.next || r.items.length === 0) break;
+    offset += r.items.length;
+    if (offset >= r.total) break;
+  }
+  return out;
+}
+
 /**
  * Most-recent release for an artist — album, single, or compilation. Used
  * by release-mode deployments (SITE_MODE=releases) to populate the "latest
