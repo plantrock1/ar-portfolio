@@ -54,6 +54,9 @@ type ReleaseCard = {
   audioSourceId: string | null;
   albumType: string | null;
   isUpcoming: boolean;
+  // Scraped total play count for this release (latest_releases.total_streams).
+  // Only set on the latest released card; null for upcoming.
+  totalStreams: number | null;
 };
 
 export default async function ReleaseArtistPage({
@@ -116,28 +119,14 @@ export default async function ReleaseArtistPage({
                 </div>
               ) : null}
             </div>
-            {monthlyListeners !== null || latest?.totalStreams ? (
-              <div className="text-right shrink-0 flex gap-6">
-                {monthlyListeners !== null ? (
-                  <div>
-                    <div className="display text-2xl sm:text-3xl text-white tabular-nums">
-                      {formatCount(monthlyListeners)}
-                    </div>
-                    <div className="text-[10px] uppercase tracking-widest text-white/40 mt-1">
-                      Monthly listeners
-                    </div>
-                  </div>
-                ) : null}
-                {latest?.totalStreams ? (
-                  <div>
-                    <div className="display text-2xl sm:text-3xl text-white tabular-nums">
-                      {formatCount(latest.totalStreams)}
-                    </div>
-                    <div className="text-[10px] uppercase tracking-widest text-white/40 mt-1">
-                      Latest streams
-                    </div>
-                  </div>
-                ) : null}
+            {monthlyListeners !== null ? (
+              <div className="text-right shrink-0">
+                <div className="display text-2xl sm:text-3xl text-white tabular-nums">
+                  {formatCount(monthlyListeners)}
+                </div>
+                <div className="text-[10px] uppercase tracking-widest text-white/40 mt-1">
+                  Monthly listeners
+                </div>
               </div>
             ) : null}
           </div>
@@ -286,6 +275,16 @@ function ReleaseCardTile({
         {formatDate(card.releaseDate)}
         <span className="text-white/30"> · {artistName}</span>
       </div>
+      {card.totalStreams ? (
+        <div className="mt-2 flex items-baseline gap-1.5">
+          <span className="display text-lg text-white tabular-nums leading-none">
+            {formatCount(card.totalStreams)}
+          </span>
+          <span className="text-[10px] uppercase tracking-widest text-white/40">
+            streams
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 
@@ -388,6 +387,7 @@ function latestToCard(r: LatestRelease): ReleaseCard {
     audioSourceId: null,
     albumType: r.albumType,
     isUpcoming: false,
+    totalStreams: r.totalStreams,
   };
 }
 
@@ -405,6 +405,7 @@ function upcomingToCard(r: UpcomingRelease): ReleaseCard {
     audioSourceId: r.audioAttachmentId ? r.id : null,
     albumType: null,
     isUpcoming: true,
+    totalStreams: null,
   };
 }
 
