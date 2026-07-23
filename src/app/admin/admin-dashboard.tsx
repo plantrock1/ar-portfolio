@@ -349,15 +349,6 @@ export function AdminDashboard({
     startTriggerGha(() => router.refresh());
   }
 
-  // Direct GitHub URLs per A&R. Falls back to the top-level actions tab if
-  // we don't know the slug (e.g. env var not yet set).
-  const ghaShallowUrl = gha.slug
-    ? `https://github.com/plantrock1/ar-portfolio/actions/workflows/shallow-refresh-${gha.slug}.yml`
-    : "https://github.com/plantrock1/ar-portfolio/actions";
-  const ghaDeepUrl = gha.slug
-    ? `https://github.com/plantrock1/ar-portfolio/actions/workflows/deep-refresh-${gha.slug}.yml`
-    : "https://github.com/plantrock1/ar-portfolio/actions";
-
 
   async function saveSession() {
     setError(null);
@@ -1173,112 +1164,12 @@ export function AdminDashboard({
             {isAdding ? "Adding…" : "Add"}
           </button>
         </form>
-        {run && run.status === "running" ? (
-          <ProgressBar run={run} />
-        ) : null}
-        <div className="mt-4 flex items-center justify-between gap-3 text-sm">
-          <div className="text-white/50 min-w-0 flex-1">
+        {message || error ? (
+          <div className="mt-4 text-sm">
             {message ? <span className="text-green-400">{message}</span> : null}
             {error ? <span className="text-red-400">{error}</span> : null}
-            {!message && !error && run && run.status !== "running" ? (
-              <LastRunLabel run={run} />
-            ) : null}
           </div>
-          <div className="flex gap-2 shrink-0">
-            {run && run.status === "running" ? (
-              <button
-                onClick={cancelRunningRefresh}
-                className="rounded-lg border border-red-400/30 bg-red-500/10 px-4 py-2 text-sm text-red-300 hover:bg-red-500/20 hover:text-red-200"
-                title="Stop the refresh at the next safe checkpoint (usually within 5–10s)."
-              >
-                Stop
-              </button>
-            ) : null}
-            <button
-              onClick={() => triggerGhaRefresh("shallow")}
-              disabled={
-                !gha.configured ||
-                isTriggeringGha ||
-                run?.status === "running"
-              }
-              className={
-                siteMode === "releases"
-                  ? "rounded-lg bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
-                  : "rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
-              }
-              title={
-                gha.configured
-                  ? siteMode === "releases"
-                    ? "Refresh: monthly listeners + latest release streams for every artist."
-                    : "Fast update on GitHub Actions (3–10 min): monthly listeners + top 5 streams per artist."
-                  : "Not configured yet — see the setup section below."
-              }
-            >
-              {isTriggeringGha ? "Triggering…" : "Refresh"}
-            </button>
-            {siteMode !== "releases" ? (
-              <button
-                onClick={() => triggerGhaRefresh("deep")}
-                disabled={
-                  !gha.configured ||
-                  isTriggeringGha ||
-                  run?.status === "running" ||
-                  !sessionState.hasCookie
-                }
-                className="rounded-lg bg-[#1db954] px-4 py-2 text-sm font-medium text-black hover:bg-[#1ed760] disabled:opacity-40"
-                title={
-                  !gha.configured
-                    ? "Not configured yet — see the setup section below."
-                    : !sessionState.hasCookie
-                      ? "Requires sp_dc session cookie (see above)"
-                      : "Full update on GitHub Actions (15 min–1 hr): lifetime stream totals for every track."
-                }
-              >
-                {isTriggeringGha ? "Triggering…" : "Deep refresh"}
-              </button>
-            ) : null}
-          </div>
-        </div>
-        <div className="mt-4 grid sm:grid-cols-2 gap-3 text-xs text-white/50 leading-relaxed">
-          <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <div className="text-white/80 font-medium">Refresh</div>
-              <a
-                href={ghaShallowUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[10px] text-white/40 hover:text-white underline underline-offset-2"
-              >
-                Open on GitHub ↗
-              </a>
-            </div>
-            <div>
-              Fast update. Scrapes each artist&apos;s Spotify page for
-              monthly listeners and top-5 stream counts. Runs on GitHub
-              Actions (3–10 min depending on roster size). Progress shows
-              above once the job starts (~30s after triggering).
-            </div>
-          </div>
-          <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <div className="text-white/80 font-medium">Deep refresh</div>
-              <a
-                href={ghaDeepUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[10px] text-white/40 hover:text-white underline underline-offset-2"
-              >
-                Open on GitHub ↗
-              </a>
-            </div>
-            <div>
-              Full discography update. Lists every album per artist, scrapes
-              each album for its tracks, then visits every track page to
-              read lifetime stream totals. Runs on GitHub Actions (15 min–1
-              hr). Auto-runs weekly; click to run on demand.
-            </div>
-          </div>
-        </div>
+        ) : null}
 
         {!gha.configured ? (
           <div className="mt-6 rounded-lg border border-yellow-400/20 bg-yellow-500/5 p-4">
