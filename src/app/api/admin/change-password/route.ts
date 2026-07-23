@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 
 const Body = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z.string().min(8).max(200),
+  newPassword: z.string().min(1).max(200),
 });
 
 export async function POST(req: NextRequest) {

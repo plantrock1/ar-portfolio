@@ -437,8 +437,8 @@ export function AdminDashboard({
       setPwErr("New passwords don't match");
       return;
     }
-    if (pwNew.length < 8) {
-      setPwErr("New password must be at least 8 characters");
+    if (pwNew.length < 1) {
+      setPwErr("New password can't be empty");
       return;
     }
     setPwSaving(true);
@@ -1512,7 +1512,7 @@ export function AdminDashboard({
       {currentSection === "password" ? (
       <SectionView title="Admin password" onBack={() => setCurrentSection("hub")}>
         <p className="text-xs text-white/50 mb-4">
-          Change the password used to sign into <code>/admin</code>. Minimum 8 characters.
+          Change the password used to sign into <code>/admin</code>.
         </p>
         <form onSubmit={changePassword} className="grid md:grid-cols-3 gap-3">
           <input
